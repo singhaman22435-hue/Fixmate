@@ -40,3 +40,4 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 export function useNotification() {
   return useContext(NotificationContext);
 }
+

@@ -244,3 +244,4 @@ function generateFollowUpSuggestions(intent?: string, lastQuery?: string): strin
       ];
   }
 }
+
