@@ -6,9 +6,9 @@ echo                 FixMate Production Server
 echo          Offline-First Personal Problem Solver
 echo ========================================================
 echo.
-echo Active Local IPv4: 10.210.244.81
+echo Active Local IPv4: 192.168.1.2
 echo   - PC Browser: http://localhost:3000
-echo   - Phone:      http://10.210.244.81:3000
+echo   - Phone:      http://192.168.1.2:3000
 echo.
 echo Starting FixMate production server...
 echo Your browser will open automatically once the server is ready.

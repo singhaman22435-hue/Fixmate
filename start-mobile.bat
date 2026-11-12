@@ -17,7 +17,7 @@ if %ERRORLEVEL% equ 0 (
 )
 
 echo Starting Expo Metro Bundler in LAN mode...
-echo Connect your phone via Expo Go on Wi-Fi (10.210.244.81)!
+echo Connect your phone via Expo Go on Wi-Fi (192.168.1.2)!
 echo.
 call npx.cmd expo start -c --lan
 pause

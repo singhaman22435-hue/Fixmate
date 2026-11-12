@@ -10,49 +10,77 @@ const STORAGE_KEYS = {
 };
 
 /**
+ * Extract an IPv4 host address from various URI formats used by Expo Go and React Native
+ */
+function extractHostFromUri(uri?: string | null): string | null {
+  if (!uri || typeof uri !== 'string') return null;
+  const match = uri.match(/(?:https?|exp):\/\/([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})/);
+  if (match && match[1]) {
+    const ip = match[1];
+    if (ip !== '127.0.0.1' && ip !== '10.0.2.2') {
+      return ip;
+    }
+  }
+  const bareMatch = uri.match(/^([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})/);
+  if (bareMatch && bareMatch[1]) {
+    const ip = bareMatch[1];
+    if (ip !== '127.0.0.1' && ip !== '10.0.2.2') {
+      return ip;
+    }
+  }
+  return null;
+}
+
+/**
+ * Return list of candidate server URLs to probe in order of likelihood
+ */
+export function getCandidateServerUrls(): string[] {
+  const candidates: string[] = [];
+
+  // 1. Explicit env var
+  if (process.env.EXPO_PUBLIC_API_URL) {
+    candidates.push(process.env.EXPO_PUBLIC_API_URL.replace(/\/$/, ''));
+  }
+
+  // 2. Constants sources in Expo SDK 52 (experienceUrl, linkingUri, hostUri, manifest)
+  const sources = [
+    (Constants as any).experienceUrl,
+    Constants.linkingUri,
+    Constants.expoConfig?.hostUri,
+    (Constants as any).manifest2?.extra?.expoGo?.debuggerHost,
+    (Constants as any).manifest?.debuggerHost,
+    NativeModules?.SourceCode?.scriptURL,
+  ];
+
+  for (const src of sources) {
+    const ip = extractHostFromUri(src);
+    if (ip) {
+      const url = `http://${ip}:3000`;
+      if (!candidates.includes(url)) {
+        candidates.push(url);
+      }
+    }
+  }
+
+  // 3. Known local subnet IPs for seamless fallback across network switches
+  const knownIps = ['192.168.1.2', '10.210.244.81', '10.0.2.2', 'localhost'];
+  for (const ip of knownIps) {
+    const url = `http://${ip}:3000`;
+    if (!candidates.includes(url)) {
+      candidates.push(url);
+    }
+  }
+
+  return candidates;
+}
+
+/**
  * Automatically determine best server URL based on the runtime environment.
  * Dynamically resolves from the Expo Go / Metro host IP so it adapts to any network change.
  */
 export function getAutoDetectedServerUrl(): string {
-  // 1. Environment variable if explicitly bundled
-  if (process.env.EXPO_PUBLIC_API_URL) {
-    return process.env.EXPO_PUBLIC_API_URL.replace(/\/$/, '');
-  }
-
-  // 2. Expo Constants hostUri (Primary and most reliable on physical phones via Expo Go)
-  try {
-    const hostUri =
-      Constants.expoConfig?.hostUri ||
-      (Constants as any).manifest2?.extra?.expoGo?.debuggerHost ||
-      (Constants as any).manifest?.debuggerHost;
-    if (hostUri) {
-      const host = hostUri.split(':')[0];
-      if (host && host !== 'localhost' && host !== '127.0.0.1' && host !== '10.0.2.2') {
-        return `http://${host}:3000`;
-      }
-    }
-  } catch {
-    // ignore
-  }
-
-  // 3. Metro Bundler scriptURL host fallback
-  try {
-    const scriptURL: string | undefined = NativeModules?.SourceCode?.scriptURL;
-    if (scriptURL) {
-      const match = scriptURL.match(/^https?:\/\/([^:\/]+)/);
-      if (match && match[1]) {
-        const host = match[1];
-        if (host !== 'localhost' && host !== '127.0.0.1' && host !== '10.0.2.2') {
-          return `http://${host}:3000`;
-        }
-      }
-    }
-  } catch {
-    // ignore
-  }
-
-  // 4. Fallback for physical Android device on current local subnet
-  return Platform.OS === 'android' ? 'http://10.210.244.81:3000' : 'http://localhost:3000';
+  const candidates = getCandidateServerUrls();
+  return candidates[0] || (Platform.OS === 'android' ? 'http://192.168.1.2:3000' : 'http://localhost:3000');
 }
 
 export const DEFAULT_SERVER_URL = getAutoDetectedServerUrl();

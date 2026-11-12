@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   DEFAULT_SERVER_URL,
   getAutoDetectedServerUrl,
+  getCandidateServerUrls,
   initApiServerUrl,
   setApiServerUrl,
   ApiService,
@@ -95,7 +96,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
   const checkConnectionWithUrl = async (urlToCheck?: string): Promise<boolean> => {
     setIsChecking(true);
-    const target = (urlToCheck && urlToCheck.trim()) ? urlToCheck.trim() : serverUrl;
+    const target = (urlToCheck && urlToCheck.trim()) ? urlToCheck.trim().replace(/\/$/, '') : serverUrl;
     try {
       const status = await ApiService.getStatus(target);
       setIsBackendConnected(true);
@@ -103,20 +104,21 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setIsChecking(false);
       return true;
     } catch {
-      // If the target URL failed, try auto-detecting the Metro host Wi-Fi IP
-      const autoUrl = getAutoDetectedServerUrl();
-      if (autoUrl && autoUrl !== target) {
+      // If the target URL failed, probe candidate network endpoints to self-heal
+      const candidates = getCandidateServerUrls();
+      for (const candidate of candidates) {
+        if (candidate === target) continue;
         try {
-          const autoStatus = await ApiService.getStatus(autoUrl);
+          const autoStatus = await ApiService.getStatus(candidate);
           // Auto-detection connected! Update state and persistence
-          setServerUrlState(autoUrl);
-          await setApiServerUrl(autoUrl);
+          setServerUrlState(candidate);
+          await setApiServerUrl(candidate);
           setIsBackendConnected(true);
           setSystemStatus(autoStatus);
           setIsChecking(false);
           return true;
         } catch {
-          // Auto-detection also failed
+          // try next candidate
         }
       }
       setIsBackendConnected(false);

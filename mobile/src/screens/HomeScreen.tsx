@@ -55,6 +55,7 @@ export function HomeScreen({ navigation }: any) {
     isBackendConnected,
     serverUrl,
     updateServerUrl,
+    checkConnection,
     operationMode,
     selectedLanguage,
   } = useSettings();
@@ -317,12 +318,12 @@ export function HomeScreen({ navigation }: any) {
             <View style={styles.serverAlertActions}>
               <TouchableOpacity
                 style={styles.serverAlertBtnPrimary}
-                onPress={() => updateServerUrl(getAutoDetectedServerUrl())}
+                onPress={() => checkConnection()}
                 activeOpacity={0.7}
               >
                 <Wifi size={13} color="#ffffff" />
                 <Text style={styles.serverAlertBtnPrimaryText}>
-                  Connect to PC ({getAutoDetectedServerUrl().replace('http://', '')})
+                  Auto-Connect to PC Server
                 </Text>
               </TouchableOpacity>
               {navigation && (
