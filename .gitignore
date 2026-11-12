@@ -1,0 +1,38 @@
+# Dependencies
+/node_modules
+mobile/node_modules
+/.pnp
+.pnp.js
+
+# Testing
+/coverage
+
+# Next.js & Expo
+/.next/
+/out/
+mobile/.expo/
+mobile/web-build/
+mobile/.expo-shared/
+
+# Production
+/build
+/dist
+
+# Misc
+.DS_Store
+*.pem
+*.log
+
+# Environment
+.env*.local
+.env
+
+# SQLite Database
+prisma/*.db
+prisma/*.db-journal
+
+# Temporary uploads & cache
+/uploads
+/tmp
+*.tsbuildinfo
+next-env.d.ts

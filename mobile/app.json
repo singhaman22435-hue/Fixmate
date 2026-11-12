@@ -1,0 +1,48 @@
+{
+  "expo": {
+    "name": "FixMate",
+    "slug": "fixmate",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "newArchEnabled": true,
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#f8fafc"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.fixmate.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "FixMate needs camera access to scan documents, bills, and screenshots.",
+        "NSMicrophoneUsageDescription": "FixMate needs microphone access to convert voice notes into tasks.",
+        "NSPhotoLibraryUsageDescription": "FixMate needs photo library access to select screenshots and receipts."
+      }
+    },
+    "android": {
+      "package": "com.fixmate.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#f8fafc"
+      },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_AUDIO"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "FixMate needs camera access to scan documents, bills, and screenshots."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "FixMate needs access to your photos to analyze selected screenshots and bills."
+        }
+      ]
+    ]
+  }
+}

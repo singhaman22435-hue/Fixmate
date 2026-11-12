@@ -1,0 +1,94 @@
+// FixMate Local Privacy-First Database Schema
+// Provider: SQLite (portable, offline, local-only)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Analysis {
+  id            String              @id @default(uuid())
+  title         String
+  intent        String              // TECHNICAL_ERROR, BILL_EXPLANATION, SUBSCRIPTION_ANALYSIS, PRODUCT_ANALYSIS, SCAM_ANALYSIS, VOICE_TASK_EXTRACTION, GENERAL_QUESTION, DOCUMENT_EXPLANATION
+  inputType     String              // image, pdf, audio, text, csv
+  summary       String
+  confidence    Float               @default(1.0)
+  riskLevel     String?             // LOW, MEDIUM, HIGH (used for Scam Check)
+  rawInput      String?             // Original prompt/text (if privacy permits)
+  processedText String?             // Extracted OCR / Speech / PDF text
+  resultJson    String              // Serialized structured output
+  status        String              @default("completed") // pending, processing, completed, failed
+  aiModelUsed   String?             // e.g. "llama3.2", "llava", or "deterministic_fallback"
+  isFavorite    Boolean             @default(false)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  inputs        AnalysisInput[]
+  tasks         TaskItem[]
+  subscriptions SubscriptionItem[]
+
+  @@index([intent])
+  @@index([createdAt])
+}
+
+model AnalysisInput {
+  id         String   @id @default(uuid())
+  analysisId String
+  analysis   Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  type       String   // image, pdf, audio, text, csv
+  fileName   String?
+  fileSize   Int?
+  mimeType   String?
+  createdAt  DateTime @default(now())
+
+  @@index([analysisId])
+}
+
+model TaskItem {
+  id          String    @id @default(uuid())
+  analysisId  String?
+  analysis    Analysis? @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  title       String
+  dueDate     String?
+  time        String?
+  priority    String    @default("MEDIUM") // LOW, MEDIUM, HIGH
+  person      String?
+  notes       String?
+  completed   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([analysisId])
+  @@index([completed])
+}
+
+model SubscriptionItem {
+  id                  String    @id @default(uuid())
+  analysisId          String?
+  analysis            Analysis? @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  merchant            String
+  amount              Float
+  currency            String    @default("₹")
+  frequency           String    // monthly, yearly, weekly, quarterly
+  estimatedYearlyCost Float
+  lastDetectedDate    String?
+  occurrenceCount     Int       @default(1)
+  confidence          String    @default("HIGH") // HIGH, MEDIUM, LOW
+  status              String    @default("ACTIVE") // ACTIVE, CANCELLED, REVIEW
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([analysisId])
+  @@index([status])
+}
+
+model SystemSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+

@@ -1,0 +1,48 @@
+{
+  "name": "fixmate",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -H 0.0.0.0",
+    "web:dev": "next dev -H 0.0.0.0",
+    "web:build": "prisma generate && next build",
+    "mobile:dev": "npm --prefix mobile run start",
+    "mobile:android": "npm --prefix mobile run android",
+    "mobile:typecheck": "npm --prefix mobile run typecheck",
+    "build": "prisma generate && next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit && npm run mobile:typecheck",
+    "db:setup": "prisma generate && prisma db push",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.4.0",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.475.0",
+    "next": "^15.1.7",
+    "papaparse": "^5.5.2",
+    "pdf-parse": "^1.1.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwind-merge": "^3.0.1",
+    "tesseract.js": "^5.1.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "@types/papaparse": "^5.3.15",
+    "@types/pdf-parse": "^1.1.4",
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^9.20.1",
+    "eslint-config-next": "15.1.7",
+    "postcss": "^8.5.2",
+    "prisma": "^6.4.0",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}
+
