@@ -57,10 +57,12 @@ Located in `mobile/`:
 - **Audio Voice Notes (`expo-av`):** Record spoken tasks and thoughts with microphone feedback and contextual permissions.
 - **Document Picker (`expo-document-picker`):** Upload PDF statements and CSV files.
 - **Offline & Local AI Connectivity:** Easily configure the backend server IP (defaults to `http://10.0.2.2:3000` for Android Emulator, or your LAN IP for a physical Android device) in the Settings tab.
-- **Simple 3-Tab Navigation:**
-  - **Solve (Home):** Scan, Speak, Upload, Type + 5 Quick Actions.
+- **Simple 5-Tab Navigation:**
+  - **Solve (Home):** Scan, Speak, Upload, Type + Quick Actions + 1-tap Reconnect.
+  - **Tasks:** Real SQLite-backed action items organized into Today, Tomorrow, Later, and Completed.
+  - **Subs:** Recurring subscription tracker with frequency math and annual burn calculation.
   - **History:** Search and inspect previous solves with local delete & wipe.
-  - **Settings:** Configure server endpoint, run connection tests, view system diagnostics, and review the Privacy Manifesto.
+  - **Settings:** Configure server endpoint, auto-detect PC IP, switch between Server and Standalone Offline mode, run connection diagnostics, and manage cache.
 
 ---
 
@@ -102,7 +104,19 @@ Located in `mobile/`:
 
 ---
 
-## 🚀 Commands & Development Workflow
+## 🚀 Running for Real Users (1-Click Launchers)
+
+### 1. Run Production Web Application (Instant Speed)
+Double-click:
+- **`start-production.bat`**: Initializes SQLite database, launches the optimized production server on `http://localhost:3000` (and `http://10.210.244.81:3000` for phones), and automatically opens your browser.
+
+### 2. Run Mobile App
+- **Expo Go (Any Android / iOS Phone)**: Double-click **`start-mobile.bat`** (or `mobile/run-android.bat`). Automatically clears stale ports and launches Metro in LAN mode.
+- **Standalone Android APK**: Double-click **`mobile/build-apk.bat`** to trigger an automated EAS build that produces a direct `.apk` installable on any Android phone without Expo Go.
+
+---
+
+## 💻 Commands & Development Workflow
 
 ### Web Application
 

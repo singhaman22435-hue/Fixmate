@@ -10,7 +10,7 @@
     "mobile:android": "npm --prefix mobile run android",
     "mobile:typecheck": "npm --prefix mobile run typecheck",
     "build": "prisma generate && next build",
-    "start": "next start",
+    "start": "next start -H 0.0.0.0 -p 3000",
     "lint": "next lint",
     "typecheck": "tsc --noEmit && npm run mobile:typecheck",
     "db:setup": "prisma generate && prisma db push",
