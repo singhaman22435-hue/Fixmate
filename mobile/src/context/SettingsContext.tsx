@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   DEFAULT_SERVER_URL,
+  getAutoDetectedServerUrl,
   initApiServerUrl,
   setApiServerUrl,
   ApiService,
@@ -94,13 +95,30 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
   const checkConnectionWithUrl = async (urlToCheck?: string): Promise<boolean> => {
     setIsChecking(true);
+    const target = (urlToCheck && urlToCheck.trim()) ? urlToCheck.trim() : serverUrl;
     try {
-      const status = await ApiService.getStatus();
+      const status = await ApiService.getStatus(target);
       setIsBackendConnected(true);
       setSystemStatus(status);
       setIsChecking(false);
       return true;
     } catch {
+      // If the target URL failed, try auto-detecting the Metro host Wi-Fi IP
+      const autoUrl = getAutoDetectedServerUrl();
+      if (autoUrl && autoUrl !== target) {
+        try {
+          const autoStatus = await ApiService.getStatus(autoUrl);
+          // Auto-detection connected! Update state and persistence
+          setServerUrlState(autoUrl);
+          await setApiServerUrl(autoUrl);
+          setIsBackendConnected(true);
+          setSystemStatus(autoStatus);
+          setIsChecking(false);
+          return true;
+        } catch {
+          // Auto-detection also failed
+        }
+      }
       setIsBackendConnected(false);
       setSystemStatus(null);
       setIsChecking(false);

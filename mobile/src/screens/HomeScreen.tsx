@@ -33,8 +33,9 @@ import {
   X,
   Wifi,
   WifiOff,
+  AlertCircle,
 } from 'lucide-react-native';
-import { ApiService, MobileAnalysisResult } from '../services/api';
+import { ApiService, MobileAnalysisResult, getAutoDetectedServerUrl } from '../services/api';
 import { useSettings, INDIAN_LANGUAGES } from '../context/SettingsContext';
 import { ResultCard } from '../components/ResultCard';
 import { LanguageSelectorModal } from '../components/LanguageSelectorModal';
@@ -48,9 +49,15 @@ interface PendingAttachment {
   intentHint?: string;
 }
 
-export function HomeScreen() {
+export function HomeScreen({ navigation }: any) {
   const insets = useSafeAreaInsets();
-  const { isBackendConnected, operationMode, selectedLanguage } = useSettings();
+  const {
+    isBackendConnected,
+    serverUrl,
+    updateServerUrl,
+    operationMode,
+    selectedLanguage,
+  } = useSettings();
 
   const [inputText, setInputText] = useState('');
   const [selectedIntent, setSelectedIntent] = useState<string | undefined>(undefined);
@@ -297,6 +304,39 @@ export function HomeScreen() {
             <Text style={styles.langPillText}>{currentLangObj.label}</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Offline / Reconnect Notice Banner */}
+        {!isBackendConnected && operationMode === 'server' && (
+          <View style={styles.serverAlertBanner}>
+            <View style={styles.serverAlertRow}>
+              <AlertCircle size={15} color="#d97706" />
+              <Text style={styles.serverAlertText} numberOfLines={2}>
+                Dev Server unreachable at <Text style={styles.serverAlertBold}>{serverUrl}</Text>
+              </Text>
+            </View>
+            <View style={styles.serverAlertActions}>
+              <TouchableOpacity
+                style={styles.serverAlertBtnPrimary}
+                onPress={() => updateServerUrl(getAutoDetectedServerUrl())}
+                activeOpacity={0.7}
+              >
+                <Wifi size={13} color="#ffffff" />
+                <Text style={styles.serverAlertBtnPrimaryText}>
+                  Connect to PC ({getAutoDetectedServerUrl().replace('http://', '')})
+                </Text>
+              </TouchableOpacity>
+              {navigation && (
+                <TouchableOpacity
+                  style={styles.serverAlertBtnSecondary}
+                  onPress={() => navigation.navigate('Settings')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.serverAlertBtnSecondaryText}>Settings</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        )}
 
         {/* Question Header */}
         <View style={styles.headerSection}>
@@ -790,5 +830,62 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#64748b',
     marginTop: 1,
+  },
+  serverAlertBanner: {
+    backgroundColor: '#fffbeb',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#fde68a',
+    padding: 10,
+    marginBottom: 12,
+  },
+  serverAlertRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  serverAlertText: {
+    fontSize: 12,
+    color: '#92400e',
+    flex: 1,
+    lineHeight: 16,
+  },
+  serverAlertBold: {
+    fontWeight: '700',
+  },
+  serverAlertActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  serverAlertBtnPrimary: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    backgroundColor: colors.primary,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+  },
+  serverAlertBtnPrimaryText: {
+    color: '#ffffff',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  serverAlertBtnSecondary: {
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    backgroundColor: '#fef3c7',
+    borderWidth: 1,
+    borderColor: '#fcd34d',
+  },
+  serverAlertBtnSecondaryText: {
+    color: '#92400e',
+    fontSize: 11,
+    fontWeight: '600',
   },
 });

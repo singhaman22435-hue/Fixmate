@@ -143,3 +143,4 @@ export const GeneralHelpResultSchema = z.object({
   suggestedNextStep: z.string().default(''),
   confidence: ConfidenceLevelSchema.default('MEDIUM'),
 });
+

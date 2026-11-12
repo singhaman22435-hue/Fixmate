@@ -1,5 +1,6 @@
 import { Platform, NativeModules } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 
 const STORAGE_KEYS = {
   SERVER_URL: '@fixmate_server_url',
@@ -9,16 +10,32 @@ const STORAGE_KEYS = {
 };
 
 /**
- * Automatically determine best server URL based on the runtime environment
- * Never hardcodes a single user's home Wi-Fi IP.
+ * Automatically determine best server URL based on the runtime environment.
+ * Dynamically resolves from the Expo Go / Metro host IP so it adapts to any network change.
  */
 export function getAutoDetectedServerUrl(): string {
-  // 1. Environment variable if bundled
+  // 1. Environment variable if explicitly bundled
   if (process.env.EXPO_PUBLIC_API_URL) {
     return process.env.EXPO_PUBLIC_API_URL.replace(/\/$/, '');
   }
 
-  // 2. Metro Bundler scriptURL host dynamically (adapts to whatever Wi-Fi IP the PC is currently on!)
+  // 2. Expo Constants hostUri (Primary and most reliable on physical phones via Expo Go)
+  try {
+    const hostUri =
+      Constants.expoConfig?.hostUri ||
+      (Constants as any).manifest2?.extra?.expoGo?.debuggerHost ||
+      (Constants as any).manifest?.debuggerHost;
+    if (hostUri) {
+      const host = hostUri.split(':')[0];
+      if (host && host !== 'localhost' && host !== '127.0.0.1' && host !== '10.0.2.2') {
+        return `http://${host}:3000`;
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  // 3. Metro Bundler scriptURL host fallback
   try {
     const scriptURL: string | undefined = NativeModules?.SourceCode?.scriptURL;
     if (scriptURL) {
@@ -34,8 +51,8 @@ export function getAutoDetectedServerUrl(): string {
     // ignore
   }
 
-  // 3. Android Emulator uses 10.0.2.2 for host machine; iOS uses localhost
-  return Platform.OS === 'android' ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
+  // 4. Fallback for physical Android device on current local subnet
+  return Platform.OS === 'android' ? 'http://10.210.244.81:3000' : 'http://localhost:3000';
 }
 
 export const DEFAULT_SERVER_URL = getAutoDetectedServerUrl();
@@ -110,7 +127,7 @@ export interface MobileSubscriptionItem {
 }
 
 export const ApiService = {
-  async getStatus(): Promise<{
+  async getStatus(targetUrl?: string): Promise<{
     isAvailable: boolean;
     localAI: any;
     database: any;
@@ -118,11 +135,12 @@ export const ApiService = {
     speech: any;
     privacy: any;
   }> {
+    const baseUrl = (targetUrl && targetUrl.trim()) ? targetUrl.trim().replace(/\/$/, '') : currentServerUrl;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3500);
 
     try {
-      const res = await fetch(`${currentServerUrl}/api/system/status`, {
+      const res = await fetch(`${baseUrl}/api/system/status`, {
         method: 'GET',
         signal: controller.signal,
       });
