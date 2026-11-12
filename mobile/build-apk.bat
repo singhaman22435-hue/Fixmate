@@ -15,3 +15,4 @@ echo Starting EAS build for Android APK...
 call npx.cmd eas-cli build -p android --profile preview
 echo.
 pause
+

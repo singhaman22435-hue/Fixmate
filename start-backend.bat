@@ -10,7 +10,9 @@ echo   - PC Browser: http://localhost:3000
 echo   - Phone:      http://10.210.244.81:3000
 echo.
 echo Note: Ensure phone and PC are on the same Wi-Fi network.
+echo Your browser will open automatically once the server is ready.
 echo ========================================================
 echo.
-call npm run dev
+start /b cmd /c "timeout /t 4 /nobreak >nul && start http://localhost:3000"
+call npm.cmd run dev
 pause

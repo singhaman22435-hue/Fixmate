@@ -6,21 +6,15 @@ echo                 FixMate Production Server
 echo          Offline-First Personal Problem Solver
 echo ========================================================
 echo.
-echo Initializing local SQLite database...
-call npx.cmd prisma db push --skip-generate >nul 2>&1
-
-echo.
 echo Active Local IPv4: 10.210.244.81
 echo   - PC Browser: http://localhost:3000
 echo   - Phone:      http://10.210.244.81:3000
 echo.
-echo Launching your browser at http://localhost:3000...
-start http://localhost:3000
-
-echo.
-echo Server running in optimized production mode...
-echo (Press Ctrl+C to stop)
+echo Starting FixMate production server...
+echo Your browser will open automatically once the server is ready.
+echo (Press Ctrl+C in this window to stop)
 echo ========================================================
 echo.
+start /b cmd /c "timeout /t 3 /nobreak >nul && start http://localhost:3000"
 call npm.cmd start
 pause
