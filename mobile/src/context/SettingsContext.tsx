@@ -1,5 +1,17 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { DEFAULT_SERVER_URL, setApiServerUrl, ApiService } from '../services/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  DEFAULT_SERVER_URL,
+  initApiServerUrl,
+  setApiServerUrl,
+  ApiService,
+} from '../services/api';
+
+const STORAGE_KEYS = {
+  SERVER_URL: '@fixmate_server_url',
+  LANGUAGE: '@fixmate_language',
+  OFFLINE_MODE: '@fixmate_offline_mode',
+};
 
 export interface SupportedLanguage {
   id: string;
@@ -21,11 +33,15 @@ export const INDIAN_LANGUAGES: SupportedLanguage[] = [
   { id: 'Punjabi', label: 'Punjabi', nativeLabel: 'ਪੰਜਾਬੀ' },
 ];
 
+export type AppOperationMode = 'server' | 'standalone_offline';
+
 interface SettingsContextType {
   serverUrl: string;
-  updateServerUrl: (url: string) => void;
+  updateServerUrl: (url: string) => Promise<void>;
   selectedLanguage: string;
-  updateLanguage: (lang: string) => void;
+  updateLanguage: (lang: string) => Promise<void>;
+  operationMode: AppOperationMode;
+  setOperationMode: (mode: AppOperationMode) => Promise<void>;
   isBackendConnected: boolean;
   isChecking: boolean;
   systemStatus: any | null;
@@ -34,9 +50,11 @@ interface SettingsContextType {
 
 const SettingsContext = createContext<SettingsContextType>({
   serverUrl: DEFAULT_SERVER_URL,
-  updateServerUrl: () => {},
+  updateServerUrl: async () => {},
   selectedLanguage: 'English',
-  updateLanguage: () => {},
+  updateLanguage: async () => {},
+  operationMode: 'server',
+  setOperationMode: async () => {},
   isBackendConnected: false,
   isChecking: false,
   systemStatus: null,
@@ -44,13 +62,37 @@ const SettingsContext = createContext<SettingsContextType>({
 });
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
-  const [serverUrl, setServerUrl] = useState(DEFAULT_SERVER_URL);
+  const [serverUrl, setServerUrlState] = useState(DEFAULT_SERVER_URL);
   const [selectedLanguage, setSelectedLanguage] = useState('English');
+  const [operationMode, setOperationModeState] = useState<AppOperationMode>('server');
   const [isBackendConnected, setIsBackendConnected] = useState(false);
   const [isChecking, setIsChecking] = useState(false);
   const [systemStatus, setSystemStatus] = useState<any | null>(null);
 
-  const checkConnection = async (): Promise<boolean> => {
+  // Initialize stored settings on app mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const storedUrl = await initApiServerUrl();
+        setServerUrlState(storedUrl);
+
+        const storedLang = await AsyncStorage.getItem(STORAGE_KEYS.LANGUAGE);
+        if (storedLang) setSelectedLanguage(storedLang);
+
+        const storedMode = await AsyncStorage.getItem(STORAGE_KEYS.OFFLINE_MODE);
+        if (storedMode === 'standalone_offline') {
+          setOperationModeState('standalone_offline');
+        } else {
+          // Attempt connecting to the local server
+          checkConnectionWithUrl(storedUrl);
+        }
+      } catch {
+        // ignore
+      }
+    })();
+  }, []);
+
+  const checkConnectionWithUrl = async (urlToCheck?: string): Promise<boolean> => {
     setIsChecking(true);
     try {
       const status = await ApiService.getStatus();
@@ -66,19 +108,29 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const updateServerUrl = (url: string) => {
-    setServerUrl(url);
-    setApiServerUrl(url);
-    checkConnection();
+  const checkConnection = async (): Promise<boolean> => {
+    return checkConnectionWithUrl(serverUrl);
   };
 
-  const updateLanguage = (lang: string) => {
+  const updateServerUrl = async (url: string) => {
+    const clean = url.trim().replace(/\/$/, '');
+    setServerUrlState(clean);
+    await setApiServerUrl(clean);
+    await checkConnectionWithUrl(clean);
+  };
+
+  const updateLanguage = async (lang: string) => {
     setSelectedLanguage(lang);
+    await AsyncStorage.setItem(STORAGE_KEYS.LANGUAGE, lang).catch(() => {});
   };
 
-  useEffect(() => {
-    checkConnection();
-  }, []);
+  const setOperationMode = async (mode: AppOperationMode) => {
+    setOperationModeState(mode);
+    await AsyncStorage.setItem(STORAGE_KEYS.OFFLINE_MODE, mode).catch(() => {});
+    if (mode === 'server') {
+      checkConnection();
+    }
+  };
 
   return (
     <SettingsContext.Provider
@@ -87,6 +139,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         updateServerUrl,
         selectedLanguage,
         updateLanguage,
+        operationMode,
+        setOperationMode,
         isBackendConnected,
         isChecking,
         systemStatus,
@@ -98,5 +152,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-export const useSettings = () => useContext(SettingsContext);
-
+export function useSettings() {
+  return useContext(SettingsContext);
+}

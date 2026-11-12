@@ -115,11 +115,11 @@ export interface ScamCheckResult {
 export interface ExtractedTask {
   id?: string;
   title: string;
-  dueDate?: string;
-  time?: string;
+  dueDate?: string | null;
+  time?: string | null;
   priority: 'LOW' | 'MEDIUM' | 'HIGH';
-  person?: string;
-  notes?: string;
+  person?: string | null;
+  notes?: string | null;
   completed?: boolean;
 }
 

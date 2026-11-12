@@ -10,6 +10,7 @@ import { PROMPTS, getLanguageInstruction } from '../ai/promptEngine';
 import { safeJsonParse } from '../ai/jsonRepair';
 import { DeterministicFallbackEngine } from '../ai/deterministicFallback';
 import { AnalyzerExecutionOutput } from './screenshotAnalyzer';
+import { ProductAnalysisResultSchema } from '../ai/validationSchemas';
 
 export class ProductAnalyzer {
   static async analyze(
@@ -17,15 +18,11 @@ export class ProductAnalyzer {
     imageBase64?: string,
     language?: string
   ): Promise<AnalyzerExecutionOutput<ProductAnalysisResult>> {
-    const tStart = Date.now();
     const fallback = DeterministicFallbackEngine.analyzeProduct(extractedText);
 
     try {
-      const tHealth = Date.now();
       const health = await localOllamaProvider.checkHealth();
-      console.log(`[Timer] checkHealth took ${Date.now() - tHealth}ms`);
-
-      if (!health.isAvailable) {
+      if (!health.isAvailable || !health.hasRequiredModel) {
         return {
           data: fallback,
           aiModelUsed: 'deterministic_fallback',
@@ -44,36 +41,36 @@ export class ProductAnalyzer {
       }
 
       const prompt = `Product listing / specifications / screenshot text:\n"""\n${extractedText || 'Analyze the attached product image.'}\n"""`;
-      const tGenerate = Date.now();
       const aiRes = await localOllamaProvider.generateCompletion(prompt, options);
-      console.log(`[Timer] generateCompletion took ${Date.now() - tGenerate}ms (model: ${aiRes.model})`);
 
-      const tParse = Date.now();
       const parsed = safeJsonParse<ProductAnalysisResult>(aiRes.text, fallback);
-      console.log(`[Timer] safeJsonParse took ${Date.now() - tParse}ms (success: ${parsed.success})`);
 
-      if (parsed.success && parsed.data.productName) {
-        console.log(`[Timer] Total ProductAnalyzer took ${Date.now() - tStart}ms`);
-        return {
-          data: {
-            ...parsed.data,
-            goodFor: Array.isArray(parsed.data.goodFor) ? parsed.data.goodFor : [],
-            notIdealFor: Array.isArray(parsed.data.notIdealFor) ? parsed.data.notIdealFor : [],
-            pros: Array.isArray(parsed.data.pros) ? parsed.data.pros : [],
-            cons: Array.isArray(parsed.data.cons) ? parsed.data.cons : [],
-            importantSpecifications: Array.isArray(parsed.data.importantSpecifications)
-              ? parsed.data.importantSpecifications
-              : [],
-            potentialConcerns: Array.isArray(parsed.data.potentialConcerns)
-              ? parsed.data.potentialConcerns
-              : [],
-            questionsToAskBeforeBuying: Array.isArray(parsed.data.questionsToAskBeforeBuying)
-              ? parsed.data.questionsToAskBeforeBuying
-              : [],
-          },
-          aiModelUsed: aiRes.model,
-          fallbackUsed: false,
-        };
+      if (parsed.success) {
+        const validated = ProductAnalysisResultSchema.safeParse(parsed.data);
+        if (validated.success) {
+          // Clean product name of prompt artifacts
+          const cleanName = (validated.data.productName || fallback.productName)
+            .replace(/^(document\s*\/\s*extracted\s*text[:\s]*|verdict[:\s]*)/i, '')
+            .trim();
+
+          // Merge deterministic specs if AI omitted them
+          const finalSpecs =
+            validated.data.importantSpecifications.length > 0 &&
+            validated.data.importantSpecifications[0].label !== 'Status'
+              ? validated.data.importantSpecifications
+              : fallback.importantSpecifications;
+
+          return {
+            data: {
+              ...validated.data,
+              productName: cleanName || fallback.productName,
+              price: validated.data.price || fallback.price,
+              importantSpecifications: finalSpecs,
+            },
+            aiModelUsed: aiRes.model,
+            fallbackUsed: false,
+          };
+        }
       }
     } catch (err: unknown) {
       console.warn('Product AI analyzer failed, using deterministic fallback:', err);

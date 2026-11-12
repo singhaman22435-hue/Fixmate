@@ -9,6 +9,7 @@ import { localOllamaProvider } from '../ai/ollamaProvider';
 import { PROMPTS, getLanguageInstruction } from '../ai/promptEngine';
 import { safeJsonParse } from '../ai/jsonRepair';
 import { DeterministicFallbackEngine } from '../ai/deterministicFallback';
+import { ScreenshotFixResultSchema } from '../ai/validationSchemas';
 
 export interface AnalyzerExecutionOutput<T> {
   data: T;
@@ -26,7 +27,7 @@ export class ScreenshotAnalyzer {
 
     try {
       const health = await localOllamaProvider.checkHealth();
-      if (!health.isAvailable) {
+      if (!health.isAvailable || !health.hasRequiredModel) {
         return {
           data: fallback,
           aiModelUsed: 'deterministic_fallback',
@@ -49,17 +50,15 @@ export class ScreenshotAnalyzer {
 
       const parsed = safeJsonParse<ScreenshotFixResult>(aiRes.text, fallback);
 
-      if (parsed.success && parsed.data.problemDetected) {
-        return {
-          data: {
-            ...parsed.data,
-            commands: Array.isArray(parsed.data.commands) ? parsed.data.commands : [],
-            whatToDo: Array.isArray(parsed.data.whatToDo) ? parsed.data.whatToDo : [],
-            thingsToAvoid: Array.isArray(parsed.data.thingsToAvoid) ? parsed.data.thingsToAvoid : [],
-          },
-          aiModelUsed: aiRes.model,
-          fallbackUsed: false,
-        };
+      if (parsed.success) {
+        const validated = ScreenshotFixResultSchema.safeParse(parsed.data);
+        if (validated.success) {
+          return {
+            data: validated.data,
+            aiModelUsed: aiRes.model,
+            fallbackUsed: false,
+          };
+        }
       }
     } catch (err: unknown) {
       console.warn('Screenshot AI analyzer failed, using deterministic fallback:', err);

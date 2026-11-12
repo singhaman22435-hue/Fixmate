@@ -317,7 +317,9 @@ export function ResultCard({
           </View>
         );
 
-      case 'BILL_EXPLANATION':
+      case 'BILL_EXPLANATION': {
+        const breakdownItems = data.chargeBreakdown || data.plainEnglishBreakdown || [];
+
         return (
           <View style={styles.section}>
             {/* Due date and total banner */}
@@ -329,6 +331,9 @@ export function ResultCard({
               {data.dueDate && (
                 <Text style={styles.dueDateText}>Due Date: {data.dueDate}</Text>
               )}
+              {data.billingPeriod && (
+                <Text style={[styles.dueDateText, { marginTop: 2 }]}>Cycle: {data.billingPeriod}</Text>
+              )}
             </View>
 
             {/* Why you're paying this */}
@@ -339,11 +344,19 @@ export function ResultCard({
               </View>
             )}
 
+            {/* Why the bill changed */}
+            {data.changesFromPreviousBill && (
+              <View style={[styles.subCard, { borderColor: '#cbd5e1', backgroundColor: '#f8fafc' }]}>
+                <Text style={styles.subCardTitle}>Why This Bill Changed</Text>
+                <Text style={styles.bodyText}>{data.changesFromPreviousBill}</Text>
+              </View>
+            )}
+
             {/* Line items breakdown */}
-            {data.plainEnglishBreakdown && data.plainEnglishBreakdown.length > 0 && (
+            {breakdownItems.length > 0 && (
               <View style={styles.subCard}>
                 <Text style={styles.subCardTitle}>Cost Breakdown</Text>
-                {data.plainEnglishBreakdown.map((item: any, i: number) => (
+                {breakdownItems.map((item: any, i: number) => (
                   <View key={i} style={styles.breakdownRow}>
                     <Text style={styles.breakdownItem}>{item.item || item.description}</Text>
                     <Text style={styles.breakdownCost}>₹{item.cost || item.amount}</Text>
@@ -362,6 +375,7 @@ export function ResultCard({
             )}
           </View>
         );
+      }
 
       case 'SCAM_ANALYSIS': {
         const isHigh = data.riskLevel === 'HIGH';

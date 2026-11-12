@@ -17,11 +17,26 @@ import {
   ShieldCheck,
   Copy,
   Check,
+  Server,
+  Mic,
 } from 'lucide-react';
 
 interface SystemDiagnostics {
   status: string;
-  database: { isAvailable: boolean; latencyMs?: number; error?: string };
+  server?: {
+    isAvailable: boolean;
+    nodeVersion: string;
+    platform: string;
+    uptimeSeconds: number;
+  };
+  database: {
+    isAvailable: boolean;
+    type: string;
+    filePath?: string;
+    fileExists?: boolean;
+    latencyMs?: number;
+    error?: string;
+  };
   localAI: {
     isAvailable: boolean;
     baseUrl: string;
@@ -32,8 +47,23 @@ interface SystemDiagnostics {
     models: Array<{ name: string; size?: number }>;
     error?: string;
   };
-  ocr: { isAvailable: boolean; engine: string };
-  privacy: { mode: string; cloudApisUsed: string };
+  ocr: {
+    isAvailable: boolean;
+    engine: string;
+    trainedDataFound: boolean;
+    trainedDataPath?: string;
+    trainedDataSizeBytes?: number;
+    mode: string;
+    error?: string;
+  };
+  speech: {
+    isAvailable: boolean;
+    mode: string;
+    whisperBinary: string | null;
+    whisperConfigured: boolean;
+    notes: string;
+  };
+  privacy: { mode: string; cloudApisUsed: string; apiKeyRequired: boolean };
 }
 
 export default function SetupPage() {
@@ -67,246 +97,215 @@ export default function SetupPage() {
   };
 
   const aiOnline = data?.localAI?.isAvailable;
-  const hasTextModel = data?.localAI?.hasRequiredModel;
-  const hasVisionModel = data?.localAI?.hasVisionModel;
+  const hasConfiguredModel = data?.localAI?.hasRequiredModel;
+  const ocrReady = data?.ocr?.isAvailable;
+  const dbReady = data?.database?.isAvailable;
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8">
+    <div className="max-w-3xl mx-auto space-y-6">
       {/* Title */}
-      <div className="text-center space-y-2">
-        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
-          FixMate Local Diagnostic &amp; Setup
+      <div className="space-y-1">
+        <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white">
+          System Setup &amp; Service Diagnostics
         </h1>
-        <p className="text-sm text-slate-600 dark:text-slate-400 max-w-xl mx-auto">
-          FixMate requires zero cloud API keys. Check the health of your local offline stack, database, OCR, and Ollama AI runtime.
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          FixMate runs locally on your computer with zero external cloud API keys. Verify service availability below.
         </p>
       </div>
 
       {/* Live Service Diagnostic Matrix */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between pb-3">
-          <CardTitle className="text-base">System Component Status</CardTitle>
+          <CardTitle className="text-sm font-semibold">Service Health Matrix</CardTitle>
           <Button
             size="sm"
             variant="outline"
             onClick={fetchDiagnostics}
             disabled={loading}
-            className="h-8 text-xs"
+            className="h-7 text-xs"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-            <span>Re-check</span>
+            <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
+            <span>Refresh</span>
           </Button>
         </CardHeader>
-        <CardContent className="divide-y divide-slate-100 dark:divide-slate-800">
+        <CardContent className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
           {/* 1. App Engine */}
-          <div className="py-3 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+          <div className="py-2.5 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <Server className="w-4 h-4 text-emerald-600 shrink-0" />
               <div>
-                <span className="text-sm font-semibold text-slate-900 dark:text-slate-100 block">
-                  Next.js App Core
+                <span className="font-medium text-slate-800 dark:text-slate-200 block">
+                  Next.js Web &amp; API Server
                 </span>
-                <span className="text-xs text-slate-500">React 19 App Router &amp; Server Pipeline</span>
+                <span className="text-slate-500">
+                  Node {data?.server?.nodeVersion || process.version} ({data?.server?.platform || 'windows'})
+                </span>
               </div>
             </div>
             <Badge variant="success">Operational</Badge>
           </div>
 
           {/* 2. SQLite Database */}
-          <div className="py-3 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Database className="w-5 h-5 text-emerald-600 shrink-0" />
+          <div className="py-2.5 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <Database className={`w-4 h-4 shrink-0 ${dbReady ? 'text-emerald-600' : 'text-rose-600'}`} />
               <div>
-                <span className="text-sm font-semibold text-slate-900 dark:text-slate-100 block">
-                  SQLite Database (Prisma)
+                <span className="font-medium text-slate-800 dark:text-slate-200 block">
+                  Local Database (SQLite / Prisma)
                 </span>
-                <span className="text-xs text-slate-500">
-                  {data?.database.isAvailable
-                    ? `dev.db active (${data.database.latencyMs}ms)`
-                    : 'Database offline'}
+                <span className="text-slate-500">
+                  {dbReady
+                    ? `dev.db connected (${data?.database.latencyMs}ms)`
+                    : `Database offline: ${data?.database.error || 'Check permissions'}`}
                 </span>
               </div>
             </div>
-            <Badge variant={data?.database.isAvailable ? 'success' : 'destructive'}>
-              {data?.database.isAvailable ? 'Active' : 'Error'}
+            <Badge variant={dbReady ? 'success' : 'destructive'}>
+              {dbReady ? 'Ready' : 'Offline'}
             </Badge>
           </div>
 
           {/* 3. OCR Engine */}
-          <div className="py-3 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <ScanLine className="w-5 h-5 text-emerald-600 shrink-0" />
+          <div className="py-2.5 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <ScanLine className={`w-4 h-4 shrink-0 ${ocrReady ? 'text-emerald-600' : 'text-amber-500'}`} />
               <div>
-                <span className="text-sm font-semibold text-slate-900 dark:text-slate-100 block">
-                  OCR Engine (Tesseract.js)
+                <span className="font-medium text-slate-800 dark:text-slate-200 block">
+                  Offline OCR Engine (Tesseract.js)
                 </span>
-                <span className="text-xs text-slate-500">Local text extraction for screenshots &amp; bills</span>
+                <span className="text-slate-500">
+                  {ocrReady
+                    ? `Local traineddata bundled (${((data?.ocr.trainedDataSizeBytes || 0) / (1024 * 1024)).toFixed(1)}MB, 100% offline)`
+                    : 'eng.traineddata missing from root'}
+                </span>
               </div>
             </div>
-            <Badge variant="success">Ready</Badge>
+            <Badge variant={ocrReady ? 'success' : 'warning'}>
+              {ocrReady ? 'Offline Ready' : 'Missing Data'}
+            </Badge>
           </div>
 
-          {/* 4. Ollama Runtime */}
-          <div className="py-3 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Cpu className={`w-5 h-5 shrink-0 ${aiOnline ? 'text-emerald-600' : 'text-amber-500'}`} />
+          {/* 4. Local Ollama LLM */}
+          <div className="py-2.5 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <Cpu className={`w-4 h-4 shrink-0 ${aiOnline ? 'text-emerald-600' : 'text-amber-500'}`} />
               <div>
-                <span className="text-sm font-semibold text-slate-900 dark:text-slate-100 block">
-                  Local Ollama LLM Runtime
+                <span className="font-medium text-slate-800 dark:text-slate-200 block">
+                  Ollama AI Daemon
                 </span>
-                <span className="text-xs text-slate-500">
+                <span className="text-slate-500">
                   {aiOnline
-                    ? `Online at ${data?.localAI.baseUrl} (${data?.localAI.models.length} model(s) installed)`
-                    : 'Not reachable on port 11434 (Deterministic mode active)'}
+                    ? `Online at ${data?.localAI.baseUrl} (${data?.localAI.models.length || 0} models available)`
+                    : 'Ollama daemon not reachable on 127.0.0.1:11434'}
                 </span>
               </div>
             </div>
             <Badge variant={aiOnline ? 'success' : 'warning'}>
-              {aiOnline ? 'Online' : 'Offline'}
+              {aiOnline ? 'Online' : 'Offline (Fallback Active)'}
             </Badge>
           </div>
 
-          {/* 5. Recommended Text Model */}
-          <div className="py-3 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              {hasTextModel ? (
-                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+          {/* 5. Configured Model Check */}
+          <div className="py-2.5 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              {hasConfiguredModel ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
               ) : (
-                <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+                <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
               )}
               <div>
-                <span className="text-sm font-semibold text-slate-900 dark:text-slate-100 block">
-                  Text Model (llama3.2 / mistral)
+                <span className="font-medium text-slate-800 dark:text-slate-200 block">
+                  Configured Model: {data?.localAI.selectedModel || 'qwen3.5:4b'}
                 </span>
-                <span className="text-xs text-slate-500">
-                  {hasTextModel
-                    ? 'Compatible local language model installed'
-                    : 'Pull model: ollama run llama3.2'}
+                <span className="text-slate-500">
+                  {hasConfiguredModel
+                    ? 'Model is loaded and verified in Ollama'
+                    : 'Model missing. Run: ollama pull qwen3.5:4b'}
                 </span>
               </div>
             </div>
-            <Badge variant={hasTextModel ? 'success' : 'default'}>
-              {hasTextModel ? 'Installed' : 'Missing'}
+            <Badge variant={hasConfiguredModel ? 'success' : 'default'}>
+              {hasConfiguredModel ? 'Loaded' : 'Not Found'}
             </Badge>
           </div>
 
-          {/* 6. Vision Model */}
-          <div className="py-3 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              {hasVisionModel ? (
-                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-              ) : (
-                <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
-              )}
+          {/* 6. Speech Transcription */}
+          <div className="py-2.5 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <Mic className="w-4 h-4 text-indigo-600 shrink-0" />
               <div>
-                <span className="text-sm font-semibold text-slate-900 dark:text-slate-100 block">
-                  Vision Model (llama3.2-vision / llava)
+                <span className="font-medium text-slate-800 dark:text-slate-200 block">
+                  Speech-to-Text Pipeline
                 </span>
-                <span className="text-xs text-slate-500">
-                  {hasVisionModel
-                    ? 'Vision-capable model ready for multimodal parsing'
-                    : 'Optional: OCR acts as automatic fallback'}
+                <span className="text-slate-500">
+                  {data?.speech.whisperConfigured
+                    ? `Local Whisper executable: ${data.speech.whisperBinary}`
+                    : 'Client-side dictation enabled (or configure WHISPER_PATH for local whisper.cpp)'}
                 </span>
               </div>
             </div>
-            <Badge variant={hasVisionModel ? 'success' : 'default'}>
-              {hasVisionModel ? 'Ready' : 'Optional (OCR Fallback)'}
+            <Badge variant={data?.speech.whisperConfigured ? 'success' : 'default'}>
+              {data?.speech.whisperConfigured ? 'Whisper Active' : 'Client Mode'}
             </Badge>
           </div>
         </CardContent>
       </Card>
 
-      {/* Offline Fallback Assurance Alert (Section 32) */}
+      {/* Fallback Engine Notice */}
       {!aiOnline && (
-        <Alert variant="warning" title="FixMate Works Without Ollama Running">
+        <Alert variant="warning" title="Deterministic Fallback Mode Is Active">
           <p className="text-xs text-amber-800 dark:text-amber-200">
-            FixMate has a built-in <strong>Deterministic Fallback Engine</strong>. Even with Ollama offline, you can still extract text from screenshots via Tesseract OCR, analyze bills, detect recurring subscriptions, check scam flags, and manage tasks!
+            FixMate does not fail when Ollama is offline. The built-in deterministic engine analyzes bills, checks scam indicators, parses CSVs and statements, and organizes task lists offline using structured logic.
           </p>
         </Alert>
       )}
 
-      {/* Step-by-Step Local AI Setup Guide */}
+      {/* Configuration Reference */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Terminal className="w-5 h-5 text-indigo-600" />
-            How to Set Up Ollama for Local AI Reasoning
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <Terminal className="w-4 h-4 text-slate-600 dark:text-slate-400" />
+            Ollama Setup Commands
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <ol className="space-y-4 text-xs text-slate-700 dark:text-slate-300">
-            <li className="space-y-1.5">
-              <span className="font-semibold text-sm text-slate-900 dark:text-slate-100 block">
-                1. Download &amp; Install Ollama
-              </span>
-              <p>
-                Visit{' '}
-                <a
-                  href="https://ollama.com/download"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-indigo-600 dark:text-indigo-400 underline font-medium"
-                >
-                  https://ollama.com/download
-                </a>{' '}
-                and run the installer for Windows, macOS, or Linux.
-              </p>
-            </li>
+        <CardContent className="space-y-3 text-xs">
+          <p className="text-slate-600 dark:text-slate-400">
+            To enable local neural reasoning on your computer:
+          </p>
 
-            <li className="space-y-1.5">
-              <span className="font-semibold text-sm text-slate-900 dark:text-slate-100 block">
-                2. Pull the Recommended Lightweight Model
-              </span>
-              <p>Open PowerShell or Command Prompt and run:</p>
-              <div className="p-3 rounded-lg bg-slate-950 text-emerald-400 font-mono text-xs flex items-center justify-between">
-                <span>ollama run llama3.2</span>
-                <button
-                  onClick={() => copyCommand('ollama run llama3.2')}
-                  className="text-slate-400 hover:text-white"
-                  aria-label="Copy command"
-                >
-                  {copiedCmd === 'ollama run llama3.2' ? (
-                    <Check className="w-3.5 h-3.5 text-emerald-400" />
-                  ) : (
-                    <Copy className="w-3.5 h-3.5" />
-                  )}
-                </button>
-              </div>
-            </li>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between p-2.5 rounded bg-slate-900 text-slate-100 font-mono text-xs">
+              <span>ollama pull qwen3.5:4b</span>
+              <button
+                onClick={() => copyCommand('ollama pull qwen3.5:4b')}
+                className="text-slate-400 hover:text-white"
+                title="Copy command"
+              >
+                {copiedCmd === 'ollama pull qwen3.5:4b' ? (
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                ) : (
+                  <Copy className="w-3.5 h-3.5" />
+                )}
+              </button>
+            </div>
 
-            <li className="space-y-1.5">
-              <span className="font-semibold text-sm text-slate-900 dark:text-slate-100 block">
-                3. (Optional) Pull the Vision Model
-              </span>
-              <p>For enhanced screenshot and image comprehension:</p>
-              <div className="p-3 rounded-lg bg-slate-950 text-emerald-400 font-mono text-xs flex items-center justify-between">
-                <span>ollama run llama3.2-vision</span>
-                <button
-                  onClick={() => copyCommand('ollama run llama3.2-vision')}
-                  className="text-slate-400 hover:text-white"
-                  aria-label="Copy command"
-                >
-                  {copiedCmd === 'ollama run llama3.2-vision' ? (
-                    <Check className="w-3.5 h-3.5 text-emerald-400" />
-                  ) : (
-                    <Copy className="w-3.5 h-3.5" />
-                  )}
-                </button>
-              </div>
-            </li>
-
-            <li className="space-y-1.5">
-              <span className="font-semibold text-sm text-slate-900 dark:text-slate-100 block">
-                4. Verify &amp; Reload FixMate
-              </span>
-              <p>
-                Once the model finishes downloading in your terminal, click the &ldquo;Re-check&rdquo; button above. FixMate will instantly detect the model and switch from deterministic fallback to local AI mode!
-              </p>
-            </li>
-          </ol>
+            <div className="flex items-center justify-between p-2.5 rounded bg-slate-900 text-slate-100 font-mono text-xs">
+              <span>ollama run qwen3.5:4b</span>
+              <button
+                onClick={() => copyCommand('ollama run qwen3.5:4b')}
+                className="text-slate-400 hover:text-white"
+                title="Copy command"
+              >
+                {copiedCmd === 'ollama run qwen3.5:4b' ? (
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                ) : (
+                  <Copy className="w-3.5 h-3.5" />
+                )}
+              </button>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>
   );
 }
-

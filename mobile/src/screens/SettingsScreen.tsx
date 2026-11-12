@@ -22,9 +22,15 @@ import {
   Lock,
   Globe,
   ChevronRight,
+  Wifi,
+  WifiOff,
+  Trash2,
+  ScanLine,
 } from 'lucide-react-native';
-import { useSettings, INDIAN_LANGUAGES } from '../context/SettingsContext';
+import { useSettings, INDIAN_LANGUAGES, AppOperationMode } from '../context/SettingsContext';
 import { LanguageSelectorModal } from '../components/LanguageSelectorModal';
+import { ApiService, getAutoDetectedServerUrl } from '../services/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export function SettingsScreen() {
   const {
@@ -32,6 +38,8 @@ export function SettingsScreen() {
     updateServerUrl,
     selectedLanguage,
     updateLanguage,
+    operationMode,
+    setOperationMode,
     isBackendConnected,
     isChecking,
     systemStatus,
@@ -40,12 +48,72 @@ export function SettingsScreen() {
 
   const [inputUrl, setInputUrl] = useState(serverUrl);
   const [isLangModalOpen, setIsLangModalOpen] = useState(false);
+  const [clearingCache, setClearingCache] = useState(false);
 
   const currentLangObj = INDIAN_LANGUAGES.find((l) => l.id === selectedLanguage) || INDIAN_LANGUAGES[0];
 
-  const handleSaveUrl = () => {
-    updateServerUrl(inputUrl.trim());
-    Alert.alert('Settings Updated', 'Server endpoint updated. Testing connection...');
+  const handleSaveUrl = async () => {
+    if (!inputUrl.trim()) {
+      Alert.alert('Invalid URL', 'Please enter a valid HTTP address (e.g. http://192.168.1.X:3000)');
+      return;
+    }
+    await updateServerUrl(inputUrl.trim());
+    Alert.alert('Server Configured', `Connecting to: ${inputUrl.trim()}`);
+  };
+
+  const handleAutoDetect = async () => {
+    const detected = getAutoDetectedServerUrl();
+    setInputUrl(detected);
+    await updateServerUrl(detected);
+  };
+
+  const handleClearCache = async () => {
+    Alert.alert(
+      'Clear Local Cache',
+      'Remove cached offline tasks, subscriptions, and history records from this phone?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: async () => {
+            setClearingCache(true);
+            try {
+              await AsyncStorage.removeItem('@fixmate_cached_tasks');
+              await AsyncStorage.removeItem('@fixmate_cached_subscriptions');
+              await AsyncStorage.removeItem('@fixmate_cached_history');
+              Alert.alert('Cache Cleared', 'Local offline cache has been reset.');
+            } catch {
+              Alert.alert('Error', 'Failed to clear local storage.');
+            } finally {
+              setClearingCache(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleWipeServerData = () => {
+    Alert.alert(
+      'Wipe Server History',
+      'Permanently delete all analysis logs and history from your local SQLite database?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Wipe All',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await ApiService.wipeAllHistory();
+              Alert.alert('History Wiped', 'All analysis history records have been permanently erased.');
+            } catch {
+              Alert.alert('Notice', 'Could not reach server to purge history.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -53,18 +121,134 @@ export function SettingsScreen() {
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.title}>Settings &amp; Preferences</Text>
-          <Text style={styles.subtitle}>Configure language, local server &amp; diagnostics</Text>
+          <Text style={styles.title}>Settings</Text>
+          <Text style={styles.subtitle}>Language, server connectivity &amp; diagnostics</Text>
         </View>
+
+        {/* Operation Mode Selector */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Operation Mode</Text>
+          <Text style={styles.cardDesc}>
+            Choose how FixMate operates on this device:
+          </Text>
+
+          <View style={styles.modeRow}>
+            <TouchableOpacity
+              style={[
+                styles.modeOption,
+                operationMode === 'server' && styles.modeOptionActive,
+              ]}
+              onPress={() => setOperationMode('server')}
+              activeOpacity={0.7}
+            >
+              <Wifi size={18} color={operationMode === 'server' ? colors.primary : colors.textSecondary} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.modeTitle, operationMode === 'server' && styles.modeTitleActive]}>
+                  Local PC Server (LAN)
+                </Text>
+                <Text style={styles.modeDesc}>
+                  Full neural reasoning via Ollama &amp; local OCR running on your computer.
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.modeOption,
+                operationMode === 'standalone_offline' && styles.modeOptionActive,
+              ]}
+              onPress={() => setOperationMode('standalone_offline')}
+              activeOpacity={0.7}
+            >
+              <WifiOff size={18} color={operationMode === 'standalone_offline' ? colors.primary : colors.textSecondary} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.modeTitle, operationMode === 'standalone_offline' && styles.modeTitleActive]}>
+                  Standalone Offline
+                </Text>
+                <Text style={styles.modeDesc}>
+                  Browse saved solutions, tasks, and subscriptions stored on this phone without network.
+                </Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Server Endpoint Configuration */}
+        {operationMode === 'server' && (
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <Server size={18} color={colors.primary} />
+              <Text style={styles.cardTitle}>Local Server Address</Text>
+            </View>
+            <Text style={styles.cardDesc}>
+              Enter your computer's local Wi-Fi IP and port (e.g. http://192.168.1.X:3000). Both your phone and PC must be on the same Wi-Fi.
+            </Text>
+
+            <TextInput
+              style={styles.input}
+              value={inputUrl}
+              onChangeText={setInputUrl}
+              placeholder="http://192.168.1.X:3000"
+              placeholderTextColor={colors.textMuted}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+
+            <View style={styles.buttonRow}>
+              <TouchableOpacity style={styles.saveBtn} onPress={handleSaveUrl}>
+                <Text style={styles.saveBtnText}>Save Address</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.testBtn}
+                onPress={checkConnection}
+                disabled={isChecking}
+              >
+                {isChecking ? (
+                  <ActivityIndicator size="small" color={colors.primary} />
+                ) : (
+                  <>
+                    <RefreshCw size={14} color={colors.primary} />
+                    <Text style={styles.testBtnText}>Test Connection</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            {/* Quick Auto-Detect button */}
+            <TouchableOpacity style={styles.autoDetectBtn} onPress={handleAutoDetect}>
+              <Text style={styles.autoDetectText}>Auto-detect Metro Bundler Host</Text>
+            </TouchableOpacity>
+
+            {/* Connection Status Banner */}
+            <View style={styles.connectionStatus}>
+              {isBackendConnected ? (
+                <View style={styles.badgeRow}>
+                  <CheckCircle2 size={16} color={colors.success} />
+                  <Text style={[styles.statusText, { color: colors.success }]}>
+                    Connected to FixMate server
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.badgeRow}>
+                  <AlertCircle size={16} color={colors.warning} />
+                  <Text style={[styles.statusText, { color: colors.warning }]}>
+                    Server not reachable at {serverUrl}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+        )}
 
         {/* Language Selection Card */}
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <Globe size={18} color={colors.primary} />
-            <Text style={styles.cardTitle}>AI Response Language</Text>
+            <Text style={styles.cardTitle}>Response Language</Text>
           </View>
           <Text style={styles.cardDesc}>
-            FixMate generates solutions, advice, and checklists in your chosen Indian language.
+            Select your preferred language for explanations, advice, and task checklists.
           </Text>
 
           <TouchableOpacity
@@ -81,191 +265,75 @@ export function SettingsScreen() {
               <ChevronRight size={14} color={colors.primary} />
             </View>
           </TouchableOpacity>
-
-          {/* Quick Language Chips */}
-          <View style={styles.quickLangRow}>
-            {['English', 'Hinglish', 'Hindi', 'Bengali', 'Marathi', 'Tamil', 'Telugu'].map((lId) => {
-              const lang = INDIAN_LANGUAGES.find((l) => l.id === lId);
-              if (!lang) return null;
-              const isSelected = selectedLanguage === lang.id;
-              return (
-                <TouchableOpacity
-                  key={lang.id}
-                  style={[styles.langChip, isSelected && styles.langChipSelected]}
-                  onPress={() => updateLanguage(lang.id)}
-                >
-                  <Text style={[styles.langChipText, isSelected && styles.langChipTextSelected]}>
-                    {lang.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
         </View>
 
-        {/* Backend Server Configuration */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Server size={18} color={colors.primary} />
-            <Text style={styles.cardTitle}>
-              {__DEV__ ? 'Developer Server Configuration' : 'Server Connection'}
-            </Text>
-          </View>
-          <Text style={styles.cardDesc}>
-            {__DEV__
-              ? 'In local development, the app connects to your machine. For physical phones on the same Wi-Fi, use your PC IP.'
-              : 'FixMate communicates securely with the production server. All data stays encrypted and private.'}
-          </Text>
-
-          <TextInput
-            style={styles.input}
-            value={inputUrl}
-            onChangeText={setInputUrl}
-            placeholder="http://192.168.1.2:3000"
-            placeholderTextColor={colors.textMuted}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-
-          {/* Quick Presets */}
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
-            <TouchableOpacity
-              style={{
-                paddingVertical: 6,
-                paddingHorizontal: 10,
-                backgroundColor: inputUrl.includes('192.168.1.2') ? '#e0e7ff' : '#f1f5f9',
-                borderRadius: 6,
-                borderWidth: 1,
-                borderColor: inputUrl.includes('192.168.1.2') ? colors.primary : '#cbd5e1',
-              }}
-              onPress={() => {
-                setInputUrl('http://192.168.1.2:3000');
-                updateServerUrl('http://192.168.1.2:3000');
-              }}
-            >
-              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textPrimary }}>
-                📱 Phone (192.168.1.2:3000)
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={{
-                paddingVertical: 6,
-                paddingHorizontal: 10,
-                backgroundColor: inputUrl.includes('10.0.2.2') ? '#e0e7ff' : '#f1f5f9',
-                borderRadius: 6,
-                borderWidth: 1,
-                borderColor: inputUrl.includes('10.0.2.2') ? colors.primary : '#cbd5e1',
-              }}
-              onPress={() => {
-                setInputUrl('http://10.0.2.2:3000');
-                updateServerUrl('http://10.0.2.2:3000');
-              }}
-            >
-              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textPrimary }}>
-                💻 Emulator (10.0.2.2:3000)
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.buttonRow}>
-            <TouchableOpacity
-              style={styles.saveBtn}
-              onPress={handleSaveUrl}
-            >
-              <Text style={styles.saveBtnText}>Save URL</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.testBtn}
-              onPress={checkConnection}
-              disabled={isChecking}
-            >
-              {isChecking ? (
-                <ActivityIndicator size="small" color={colors.primary} />
-              ) : (
-                <>
-                  <RefreshCw size={14} color={colors.primary} />
-                  <Text style={styles.testBtnText}>Test Connection</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          </View>
-
-          {/* Status result */}
-          <View style={styles.connectionStatus}>
-            {isBackendConnected ? (
-              <View style={styles.badgeRow}>
-                <CheckCircle2 size={16} color={colors.success} />
-                <Text style={[styles.statusText, { color: colors.success }]}>
-                  Connected to local FixMate Core
-                </Text>
-              </View>
-            ) : (
-              <View style={styles.badgeRow}>
-                <AlertCircle size={16} color={colors.warning} />
-                <Text style={[styles.statusText, { color: colors.warning }]}>
-                  Server not responding (offline mode active)
-                </Text>
-              </View>
-            )}
-          </View>
-        </View>
-
-        {/* Live Service Diagnostics */}
+        {/* Live Diagnostics Card */}
         {systemStatus && (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Local System Diagnostics</Text>
+            <Text style={styles.cardTitle}>Live System Status</Text>
 
             <View style={styles.diagRow}>
               <View style={styles.diagLabelRow}>
-                <Database size={16} color={colors.textSecondary} />
+                <Database size={15} color={colors.textSecondary} />
                 <Text style={styles.diagLabel}>SQLite Database</Text>
               </View>
               <Text style={styles.diagValue}>
-                {systemStatus.database?.isAvailable ? 'Active' : 'Offline'}
+                {systemStatus.database?.isAvailable ? 'Connected' : 'Offline'}
               </Text>
             </View>
 
             <View style={styles.diagRow}>
               <View style={styles.diagLabelRow}>
-                <Cpu size={16} color={colors.textSecondary} />
-                <Text style={styles.diagLabel}>Ollama AI Runtime</Text>
+                <ScanLine size={15} color={colors.textSecondary} />
+                <Text style={styles.diagLabel}>Offline OCR</Text>
               </View>
               <Text style={styles.diagValue}>
-                {systemStatus.localAI?.isAvailable
-                  ? `Online (${systemStatus.localAI?.models?.length || 0} models)`
+                {systemStatus.ocr?.isAvailable ? 'Tesseract Local' : 'Unavailable'}
+              </Text>
+            </View>
+
+            <View style={styles.diagRow}>
+              <View style={styles.diagLabelRow}>
+                <Cpu size={15} color={colors.textSecondary} />
+                <Text style={styles.diagLabel}>Ollama Model</Text>
+              </View>
+              <Text style={styles.diagValue}>
+                {systemStatus.localAI?.hasRequiredModel
+                  ? systemStatus.localAI.selectedModel
                   : 'Deterministic Fallback'}
               </Text>
             </View>
 
             <View style={styles.diagRow}>
               <View style={styles.diagLabelRow}>
-                <Lock size={16} color={colors.textSecondary} />
+                <Lock size={15} color={colors.textSecondary} />
                 <Text style={styles.diagLabel}>Privacy Mode</Text>
               </View>
               <Text style={[styles.diagValue, { color: colors.success }]}>
-                100% Local Privacy
+                100% Local Processing
               </Text>
             </View>
           </View>
         )}
 
-        {/* Privacy Manifesto */}
+        {/* Data Management & Privacy */}
         <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <ShieldCheck size={20} color={colors.success} />
-            <Text style={styles.cardTitle}>Mobile Privacy Guarantee</Text>
-          </View>
-          <Text style={styles.manifestoText}>
-            FixMate does not upload your camera captures, voice notes, bills, or screenshots to any public cloud AI provider.
-            {'\n\n'}
-            • Zero OpenAI, Gemini, or Claude API calls
-            {'\n'}
-            • Zero bank login or password access
-            {'\n'}
-            • Full local ownership of your SQLite records
+          <Text style={styles.cardTitle}>Privacy &amp; Data Hygiene</Text>
+          <Text style={styles.cardDesc}>
+            All OCR, bills, tasks, and queries remain on your local hardware. You can wipe data at any time.
           </Text>
+
+          <View style={{ gap: 10, marginTop: 12 }}>
+            <TouchableOpacity style={styles.dangerBtn} onPress={handleClearCache}>
+              <Trash2 size={15} color="#dc2626" />
+              <Text style={styles.dangerBtnText}>Clear Phone Offline Cache</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.dangerBtn} onPress={handleWipeServerData}>
+              <Trash2 size={15} color="#dc2626" />
+              <Text style={styles.dangerBtnText}>Wipe Analysis Records from Server</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
 
@@ -281,197 +349,225 @@ export function SettingsScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: '#f8fafc',
   },
   container: {
     flex: 1,
-    backgroundColor: colors.background,
   },
   content: {
-    padding: spacing.lg,
-    gap: spacing.lg,
+    paddingHorizontal: 16,
+    paddingBottom: 40,
   },
   header: {
-    marginBottom: spacing.xs,
+    marginVertical: 14,
   },
   title: {
-    ...typography.h2,
-    color: colors.text,
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#0f172a',
+    letterSpacing: -0.3,
   },
   subtitle: {
-    ...typography.caption,
-    color: colors.textSecondary,
+    fontSize: 12,
+    color: '#64748b',
     marginTop: 2,
   },
   card: {
-    backgroundColor: colors.card,
-    borderRadius: 16,
-    padding: spacing.lg,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: '#e2e8f0',
+    padding: 14,
+    marginBottom: 14,
   },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.xs,
+    gap: 8,
+    marginBottom: 4,
   },
   cardTitle: {
-    ...typography.h3,
-    color: colors.text,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0f172a',
   },
   cardDesc: {
-    ...typography.caption,
-    lineHeight: 18,
-    marginBottom: spacing.md,
+    fontSize: 12,
+    color: '#64748b',
+    lineHeight: 17,
+    marginTop: 2,
+    marginBottom: 10,
   },
-  langSelectorRow: {
+  modeRow: {
+    gap: 8,
+    marginTop: 4,
+  },
+  modeOption: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#f8fafc',
-    borderRadius: 12,
-    padding: 14,
+    alignItems: 'flex-start',
+    gap: 12,
+    padding: 12,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: '#e2e8f0',
-    marginBottom: 12,
+    backgroundColor: '#f8fafc',
   },
-  selectedLangName: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.textPrimary,
+  modeOptionActive: {
+    borderColor: colors.primary,
+    backgroundColor: '#f5f3ff',
   },
-  selectedLangNative: {
-    fontSize: 12,
-    color: colors.textSecondary,
+  modeTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#334155',
+  },
+  modeTitleActive: {
+    color: colors.primary,
+  },
+  modeDesc: {
+    fontSize: 11,
+    color: '#64748b',
     marginTop: 2,
   },
-  changePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#eef2ff',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  changePillText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.primary,
-  },
-  quickLangRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  langChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-    backgroundColor: '#f1f5f9',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  langChipSelected: {
-    backgroundColor: '#eef2ff',
-    borderColor: colors.primary,
-  },
-  langChipText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  langChipTextSelected: {
-    color: colors.primary,
-    fontWeight: '700',
-  },
   input: {
-    backgroundColor: colors.background,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
+    borderColor: '#cbd5e1',
     borderRadius: 8,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    fontSize: 14,
-    color: colors.text,
-    minHeight: touchTarget.minHeight,
-    marginBottom: spacing.md,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    fontSize: 13,
+    color: '#0f172a',
+    backgroundColor: '#ffffff',
+    marginBottom: 10,
   },
   buttonRow: {
     flexDirection: 'row',
-    gap: spacing.md,
+    gap: 8,
+    marginBottom: 8,
   },
   saveBtn: {
     flex: 1,
     backgroundColor: colors.primary,
     borderRadius: 8,
-    paddingVertical: spacing.sm,
+    paddingVertical: 9,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: touchTarget.minHeight,
   },
   saveBtnText: {
     color: '#ffffff',
+    fontSize: 12,
     fontWeight: '600',
-    fontSize: 14,
   },
   testBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: spacing.xs,
-    backgroundColor: colors.primaryLight,
+    gap: 6,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
     borderRadius: 8,
-    paddingVertical: spacing.sm,
-    minHeight: touchTarget.minHeight,
+    paddingVertical: 9,
+    backgroundColor: '#ffffff',
   },
   testBtnText: {
+    color: '#334155',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  autoDetectBtn: {
+    paddingVertical: 7,
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  autoDetectText: {
+    fontSize: 11,
     color: colors.primary,
     fontWeight: '600',
-    fontSize: 14,
+    textDecorationLine: 'underline',
   },
   connectionStatus: {
-    marginTop: spacing.md,
-    paddingTop: spacing.md,
+    paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: colors.cardBorder,
+    borderTopColor: '#f1f5f9',
   },
   badgeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs,
+    gap: 6,
   },
   statusText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '500',
+  },
+  langSelectorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    backgroundColor: '#f8fafc',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  selectedLangName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  selectedLangNative: {
+    fontSize: 11,
+    color: '#64748b',
+    marginTop: 1,
+  },
+  changePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  changePillText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.primary,
   },
   diagRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: spacing.sm,
+    justifyContent: 'space-between',
+    paddingVertical: 7,
     borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
+    borderBottomColor: '#f1f5f9',
   },
   diagLabelRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: 8,
   },
   diagLabel: {
-    fontSize: 14,
-    color: colors.text,
+    fontSize: 12,
+    color: '#334155',
+    fontWeight: '500',
   },
   diagValue: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: colors.textSecondary,
+    fontSize: 12,
+    color: '#64748b',
+    fontWeight: '600',
   },
-  manifestoText: {
-    fontSize: 13,
-    lineHeight: 20,
-    color: colors.textSecondary,
+  dangerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    backgroundColor: '#fef2f2',
+  },
+  dangerBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#dc2626',
   },
 });

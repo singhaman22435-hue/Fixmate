@@ -210,21 +210,9 @@ export class UnifiedPipeline {
 
         analysisId = record.id;
 
-        // Persist structured tasks if voice extraction
-        if (resultPayload.type === 'VOICE_TASK_EXTRACTION' && resultPayload.data.tasks.length > 0) {
-          await prisma.taskItem.createMany({
-            data: resultPayload.data.tasks.map((t) => ({
-              analysisId: record.id,
-              title: t.title,
-              dueDate: t.dueDate || null,
-              time: t.time || null,
-              priority: t.priority || 'MEDIUM',
-              person: t.person || null,
-              notes: t.notes || null,
-              completed: false,
-            })),
-          });
-        }
+        // Note: Tasks from voice are NOT automatically persisted into the user's active
+        // task list until the user reviews and confirms them on the result screen.
+        // This prevents ambiguous or unconfirmed voice notes from polluting the task database.
 
         // Persist detected subscriptions if subscription analysis
         if (

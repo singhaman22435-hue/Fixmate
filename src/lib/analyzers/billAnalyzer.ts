@@ -10,6 +10,7 @@ import { PROMPTS, getLanguageInstruction } from '../ai/promptEngine';
 import { safeJsonParse } from '../ai/jsonRepair';
 import { DeterministicFallbackEngine } from '../ai/deterministicFallback';
 import { AnalyzerExecutionOutput } from './screenshotAnalyzer';
+import { BillAnalysisResultSchema } from '../ai/validationSchemas';
 
 export class BillAnalyzer {
   static async analyze(
@@ -21,7 +22,7 @@ export class BillAnalyzer {
 
     try {
       const health = await localOllamaProvider.checkHealth();
-      if (!health.isAvailable) {
+      if (!health.isAvailable || !health.hasRequiredModel) {
         return {
           data: fallback,
           aiModelUsed: 'deterministic_fallback',
@@ -44,18 +45,32 @@ export class BillAnalyzer {
 
       const parsed = safeJsonParse<BillAnalysisResult>(aiRes.text, fallback);
 
-      if (parsed.success && (parsed.data.totalAmount !== undefined || parsed.data.whyYouArePayingThis)) {
-        return {
-          data: {
-            ...parsed.data,
-            chargeBreakdown: Array.isArray(parsed.data.chargeBreakdown) ? parsed.data.chargeBreakdown : [],
-            unusualCharges: Array.isArray(parsed.data.unusualCharges) ? parsed.data.unusualCharges : [],
-            thingsToCheck: Array.isArray(parsed.data.thingsToCheck) ? parsed.data.thingsToCheck : [],
-            importantDates: Array.isArray(parsed.data.importantDates) ? parsed.data.importantDates : [],
-          },
-          aiModelUsed: aiRes.model,
-          fallbackUsed: false,
-        };
+      if (parsed.success) {
+        const validated = BillAnalysisResultSchema.safeParse(parsed.data);
+        if (validated.success) {
+          const isVagueChange =
+            !validated.data.changesFromPreviousBill ||
+            /not\s*specified|none|n\/a|unknown/i.test(validated.data.changesFromPreviousBill);
+          const effectiveChanges =
+            isVagueChange &&
+            fallback.changesFromPreviousBill &&
+            !fallback.changesFromPreviousBill.startsWith('Single billing cycle')
+              ? fallback.changesFromPreviousBill
+              : (validated.data.changesFromPreviousBill || fallback.changesFromPreviousBill);
+
+          return {
+            data: {
+              ...validated.data,
+              // Merge deterministic findings if LLM missed line items or total
+              totalAmount: validated.data.totalAmount ?? fallback.totalAmount,
+              dueDate: validated.data.dueDate ?? fallback.dueDate,
+              billerName: validated.data.billerName ?? fallback.billerName,
+              changesFromPreviousBill: effectiveChanges,
+            },
+            aiModelUsed: aiRes.model,
+            fallbackUsed: false,
+          };
+        }
       }
     } catch (err: unknown) {
       console.warn('Bill AI analyzer failed, using deterministic fallback:', err);

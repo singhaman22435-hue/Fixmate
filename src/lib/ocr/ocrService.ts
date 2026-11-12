@@ -1,12 +1,26 @@
 /**
  * FixMate Replaceable OCR Service
- * Uses Tesseract.js for offline, local text extraction from images.
+ * Uses Tesseract.js for 100% offline, local text extraction from images
+ * using the bundled local traineddata file.
  */
+
+import path from 'path';
+import fs from 'fs';
 
 export interface OCRResult {
   text: string;
   confidence: number;
   durationMs: number;
+}
+
+export interface OCRHealthStatus {
+  isAvailable: boolean;
+  engine: string;
+  trainedDataFound: boolean;
+  trainedDataPath: string;
+  trainedDataSizeBytes: number;
+  mode: string;
+  error?: string;
 }
 
 let cachedWorker: any = null;
@@ -16,8 +30,17 @@ async function getWorker() {
     try {
       const Tesseract = await import('tesseract.js');
       const createWorkerFn = Tesseract.default?.createWorker || Tesseract.createWorker;
-      cachedWorker = await createWorkerFn('eng');
-    } catch {
+      const cwd = process.cwd();
+      const localLangPath = path.resolve(cwd);
+
+      // Explicitly instruct Tesseract to read the uncompressed local eng.traineddata from disk
+      cachedWorker = await createWorkerFn('eng', 1, {
+        langPath: localLangPath,
+        gzip: false,
+        cacheMethod: 'none',
+      });
+    } catch (err: unknown) {
+      console.error('Failed to initialize local offline OCR worker:', err);
       cachedWorker = null;
     }
   }
@@ -25,6 +48,33 @@ async function getWorker() {
 }
 
 export class OCRService {
+  /**
+   * Diagnostic check of offline OCR readiness
+   */
+  static checkStatus(): OCRHealthStatus {
+    const cwd = process.cwd();
+    const trainedDataPath = path.resolve(cwd, 'eng.traineddata');
+    const exists = fs.existsSync(trainedDataPath);
+    let size = 0;
+    if (exists) {
+      try {
+        size = fs.statSync(trainedDataPath).size;
+      } catch {
+        // ignore
+      }
+    }
+
+    return {
+      isAvailable: exists,
+      engine: 'Tesseract.js (Bundled Offline Model)',
+      trainedDataFound: exists,
+      trainedDataPath,
+      trainedDataSizeBytes: size,
+      mode: '100% Offline (Local traineddata)',
+      error: exists ? undefined : 'eng.traineddata missing from project root',
+    };
+  }
+
   /**
    * Extract text from an image buffer or base64 string
    */
@@ -48,9 +98,13 @@ export class OCRService {
         text = res.data.text || '';
         confidence = (res.data.confidence || 0) / 100;
       } else {
+        // Fallback direct recognition using local langPath
         const Tesseract = await import('tesseract.js');
         const recognizeFn = Tesseract.default?.recognize || Tesseract.recognize;
-        const res = await recognizeFn(buffer, 'eng');
+        const res = await recognizeFn(buffer, 'eng', {
+          langPath: path.resolve(process.cwd()),
+          gzip: false,
+        });
         text = res.data.text || '';
         confidence = (res.data.confidence || 0) / 100;
       }

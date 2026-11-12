@@ -9,6 +9,7 @@ import { PROMPTS, getLanguageInstruction } from '../ai/promptEngine';
 import { safeJsonParse } from '../ai/jsonRepair';
 import { DeterministicFallbackEngine } from '../ai/deterministicFallback';
 import { AnalyzerExecutionOutput } from './screenshotAnalyzer';
+import { GeneralHelpResultSchema } from '../ai/validationSchemas';
 
 export class GeneralAnalyzer {
   static async analyze(
@@ -20,7 +21,7 @@ export class GeneralAnalyzer {
 
     try {
       const health = await localOllamaProvider.checkHealth();
-      if (!health.isAvailable) {
+      if (!health.isAvailable || !health.hasRequiredModel) {
         return {
           data: fallback,
           aiModelUsed: 'deterministic_fallback',
@@ -43,18 +44,15 @@ export class GeneralAnalyzer {
 
       const parsed = safeJsonParse<GeneralHelpResult>(aiRes.text, fallback);
 
-      if (parsed.success && parsed.data.summary) {
-        return {
-          data: {
-            ...parsed.data,
-            keyTakeaways: Array.isArray(parsed.data.keyTakeaways) ? parsed.data.keyTakeaways : [],
-            recommendedActions: Array.isArray(parsed.data.recommendedActions)
-              ? parsed.data.recommendedActions
-              : [],
-          },
-          aiModelUsed: aiRes.model,
-          fallbackUsed: false,
-        };
+      if (parsed.success) {
+        const validated = GeneralHelpResultSchema.safeParse(parsed.data);
+        if (validated.success) {
+          return {
+            data: validated.data,
+            aiModelUsed: aiRes.model,
+            fallbackUsed: false,
+          };
+        }
       }
     } catch (err: unknown) {
       console.warn('General AI analyzer failed, using deterministic fallback:', err);

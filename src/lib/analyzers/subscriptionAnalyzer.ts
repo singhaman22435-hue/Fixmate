@@ -9,6 +9,7 @@ import { PROMPTS, getLanguageInstruction } from '../ai/promptEngine';
 import { safeJsonParse } from '../ai/jsonRepair';
 import { DeterministicFallbackEngine } from '../ai/deterministicFallback';
 import { AnalyzerExecutionOutput } from './screenshotAnalyzer';
+import { SubscriptionAnalysisResultSchema } from '../ai/validationSchemas';
 
 export class SubscriptionAnalyzer {
   static async analyze(
@@ -20,7 +21,7 @@ export class SubscriptionAnalyzer {
 
     try {
       const health = await localOllamaProvider.checkHealth();
-      if (!health.isAvailable) {
+      if (!health.isAvailable || !health.hasRequiredModel) {
         return {
           data: fallback,
           aiModelUsed: 'deterministic_fallback',
@@ -43,16 +44,40 @@ export class SubscriptionAnalyzer {
 
       const parsed = safeJsonParse<SubscriptionAnalysisResult>(aiRes.text, fallback);
 
-      if (parsed.success && Array.isArray(parsed.data.detectedSubscriptions)) {
-        return {
-          data: {
-            ...parsed.data,
-            detectedSubscriptions: parsed.data.detectedSubscriptions,
-            detectedCount: parsed.data.detectedSubscriptions.length,
-          },
-          aiModelUsed: aiRes.model,
-          fallbackUsed: false,
-        };
+      if (parsed.success) {
+        const validated = SubscriptionAnalysisResultSchema.safeParse(parsed.data);
+        if (validated.success) {
+          // If fallback found more deterministic transactions, merge them
+          const finalSubscriptions =
+            validated.data.detectedSubscriptions.length > 0
+              ? validated.data.detectedSubscriptions
+              : fallback.detectedSubscriptions;
+
+          const totalMonthly = finalSubscriptions.reduce((acc, s) => {
+            if (s.frequency === 'monthly') return acc + s.amount;
+            if (s.frequency === 'yearly') return acc + s.amount / 12;
+            if (s.frequency === 'quarterly') return acc + (s.amount * 4) / 12;
+            if (s.frequency === 'weekly') return acc + (s.amount * 52) / 12;
+            return acc + s.amount;
+          }, 0);
+
+          const totalYearly = finalSubscriptions.reduce((acc, s) => acc + s.estimatedYearlyCost, 0);
+
+          return {
+            data: {
+              detectedSubscriptions: finalSubscriptions,
+              totalMonthlySpend: Math.round(totalMonthly * 100) / 100,
+              totalYearlySpend: Math.round(totalYearly * 100) / 100,
+              potentialSavings: finalSubscriptions.length > 0 ? Math.round(totalYearly * 0.25 * 100) / 100 : 0,
+              summary:
+                validated.data.summary ||
+                `Identified ${finalSubscriptions.length} subscriptions totaling ₹${Math.round(totalMonthly)}/month.`,
+              detectedCount: finalSubscriptions.length,
+            },
+            aiModelUsed: aiRes.model,
+            fallbackUsed: false,
+          };
+        }
       }
     } catch (err: unknown) {
       console.warn('Subscription AI analyzer failed, using deterministic fallback:', err);

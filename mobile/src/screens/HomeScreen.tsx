@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { Audio } from 'expo-av';
-import { colors, spacing, typography, touchTarget } from '../theme/colors';
+import { colors } from '../theme/colors';
 import {
   Camera,
   Image as ImageIcon,
@@ -27,14 +27,12 @@ import {
   ShieldAlert,
   ShoppingCart,
   Repeat,
-  ShieldCheck,
-  AlertCircle,
+  CheckSquare,
   Square,
   Globe,
-  ChevronDown,
-  Sparkles,
   X,
-  Paperclip,
+  Wifi,
+  WifiOff,
 } from 'lucide-react-native';
 import { ApiService, MobileAnalysisResult } from '../services/api';
 import { useSettings, INDIAN_LANGUAGES } from '../context/SettingsContext';
@@ -52,7 +50,7 @@ interface PendingAttachment {
 
 export function HomeScreen() {
   const insets = useSafeAreaInsets();
-  const { isBackendConnected, serverUrl, updateServerUrl, selectedLanguage } = useSettings();
+  const { isBackendConnected, operationMode, selectedLanguage } = useSettings();
 
   const [inputText, setInputText] = useState('');
   const [selectedIntent, setSelectedIntent] = useState<string | undefined>(undefined);
@@ -82,7 +80,7 @@ export function HomeScreen() {
 
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ['images'],
-      quality: 0.4,
+      quality: 0.5,
     });
 
     if (!result.canceled && result.assets[0]) {
@@ -111,7 +109,7 @@ export function HomeScreen() {
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      quality: 0.4,
+      quality: 0.5,
     });
 
     if (!result.canceled && result.assets[0]) {
@@ -201,7 +199,7 @@ export function HomeScreen() {
   };
 
   /**
-   * Unified Problem Solving (Supports Attachment + Optional Question Query Together)
+   * Unified Problem Solving
    */
   const handleSolve = async () => {
     if (!inputText.trim() && !pendingAttachment) return;
@@ -240,257 +238,194 @@ export function HomeScreen() {
       setSelectedIntent(undefined);
     } catch (err: any) {
       Alert.alert(
-        'Connection Notice',
-        __DEV__
-          ? `${err.message}\n\n[Dev Mode] Verify that FixMate server is reachable at: ${serverUrl}`
-          : 'Unable to reach the server. Please check your network connection and try again.'
+        'Processing Failed',
+        err.message || 'Could not connect to the local FixMate server. Check your Settings.'
       );
     } finally {
       setLoading(false);
     }
   };
 
+  const clearAttachment = () => {
+    setPendingAttachment(null);
+  };
+
+  // If viewing active result
   if (activeResult) {
-    return <ResultCard result={activeResult} onReset={() => setActiveResult(null)} />;
+    return (
+      <View style={[styles.screenWrapper, { paddingTop: insets.top }]}>
+        <ResultCard result={activeResult} onReset={() => setActiveResult(null)} />
+      </View>
+    );
   }
 
-  const topInset = Math.max(insets.top, 14);
-  const canSubmit = (inputText.trim().length > 0 || pendingAttachment !== null) && !loading;
+  const hasContentToSubmit = Boolean(inputText.trim() || pendingAttachment);
 
   return (
-    <View style={[styles.screenWrapper, { paddingTop: topInset }]}>
+    <View style={[styles.screenWrapper, { paddingTop: insets.top }]}>
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         {/* Top Header Bar */}
         <View style={styles.topHeaderBar}>
-          <View style={styles.brandRow}>
-            <View style={styles.logoBadge}>
-              <Sparkles size={18} color="#ffffff" />
-            </View>
-            <View>
-              <Text style={styles.brandTitle}>FixMate</Text>
-              <Text style={styles.brandSubtitle}>Offline Problem Solver</Text>
+          <View>
+            <Text style={styles.brandTitle}>FixMate</Text>
+            <View style={styles.statusIndicatorRow}>
+              {isBackendConnected ? (
+                <>
+                  <View style={[styles.statusDot, { backgroundColor: '#10b981' }]} />
+                  <Text style={styles.statusText}>Server Connected</Text>
+                </>
+              ) : (
+                <>
+                  <View style={[styles.statusDot, { backgroundColor: '#94a3b8' }]} />
+                  <Text style={styles.statusText}>Offline Mode</Text>
+                </>
+              )}
             </View>
           </View>
 
           {/* Language Selector Pill */}
           <TouchableOpacity
-            style={styles.langSelectorBtn}
+            style={styles.langPill}
             onPress={() => setIsLangModalOpen(true)}
             activeOpacity={0.7}
           >
-            <Globe size={15} color={colors.primary} />
-            <Text style={styles.langSelectorText}>
-              {currentLangObj.id === 'English' ? 'EN' : currentLangObj.nativeLabel.split(' ')[0]}
-            </Text>
-            <ChevronDown size={14} color={colors.textSecondary} />
+            <Globe size={13} color="#475569" />
+            <Text style={styles.langPillText}>{currentLangObj.label}</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Privacy & Health Status Pill */}
-        <View style={styles.statusBar}>
-          <ShieldCheck size={13} color={colors.success} />
-          <Text style={styles.statusText}>100% Local Privacy</Text>
-          <Text style={styles.dot}>•</Text>
-          <Text
-            style={[
-              styles.statusText,
-              { color: isBackendConnected ? colors.success : colors.warning },
-            ]}
-          >
-            {isBackendConnected ? 'Backend Connected' : 'Connecting to Server...'}
+        {/* Question Header */}
+        <View style={styles.headerSection}>
+          <Text style={styles.questionHeading}>What do you need help with?</Text>
+          <Text style={styles.questionSubheading}>
+            Type a query, snap an error, scan a bill, or record a voice note.
           </Text>
         </View>
 
-        {/* Developer Network Notice */}
-        {!isBackendConnected && __DEV__ && (
-          <View style={styles.offlineBox}>
-            <AlertCircle size={18} color={colors.warning} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.offlineText}>
-                Dev Server unreachable at {serverUrl}
-              </Text>
-              <TouchableOpacity
-                style={styles.reconnectBtn}
-                onPress={() => updateServerUrl('http://192.168.1.2:3000')}
-              >
-                <Text style={styles.reconnectBtnText}>
-                  Tap to Connect to PC Wi-Fi (192.168.1.2:3000)
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-
-        {/* 4 Primary Action Tiles (Scan, Gallery, Speak, Upload) */}
-        <View style={styles.actionGrid}>
-          {/* Camera */}
-          <TouchableOpacity
-            style={styles.primaryActionButton}
-            onPress={handleCameraScan}
-            disabled={loading}
-            activeOpacity={0.75}
-          >
-            <View style={[styles.iconCircle, { backgroundColor: '#e0e7ff' }]}>
-              <Camera size={22} color={colors.primary} />
-            </View>
-            <Text style={styles.actionButtonText}>Scan</Text>
-            <Text style={styles.actionButtonSubtext}>Camera</Text>
-          </TouchableOpacity>
-
-          {/* Gallery */}
-          <TouchableOpacity
-            style={styles.primaryActionButton}
-            onPress={handleGalleryPick}
-            disabled={loading}
-            activeOpacity={0.75}
-          >
-            <View style={[styles.iconCircle, { backgroundColor: '#e0f2fe' }]}>
-              <ImageIcon size={22} color="#0284c7" />
-            </View>
-            <Text style={styles.actionButtonText}>Gallery</Text>
-            <Text style={styles.actionButtonSubtext}>Screenshots</Text>
-          </TouchableOpacity>
-
-          {/* Speak */}
-          <TouchableOpacity
-            style={[
-              styles.primaryActionButton,
-              isRecording && { backgroundColor: colors.dangerLight, borderColor: colors.danger },
-            ]}
-            onPress={isRecording ? stopRecording : startRecording}
-            disabled={loading}
-            activeOpacity={0.75}
-          >
-            <View
-              style={[
-                styles.iconCircle,
-                { backgroundColor: isRecording ? '#fecaca' : '#fce7f3' },
-              ]}
-            >
-              {isRecording ? (
-                <Square size={20} color={colors.danger} />
-              ) : (
-                <Mic size={22} color="#db2777" />
-              )}
-            </View>
-            <Text style={[styles.actionButtonText, isRecording && { color: colors.danger }]}>
-              {isRecording ? 'Stop' : 'Speak'}
-            </Text>
-            <Text style={styles.actionButtonSubtext}>Voice Note</Text>
-          </TouchableOpacity>
-
-          {/* Documents */}
-          <TouchableOpacity
-            style={styles.primaryActionButton}
-            onPress={handleDocumentPick}
-            disabled={loading}
-            activeOpacity={0.75}
-          >
-            <View style={[styles.iconCircle, { backgroundColor: '#fef3c7' }]}>
-              <FileText size={22} color="#d97706" />
-            </View>
-            <Text style={styles.actionButtonText}>Upload</Text>
-            <Text style={styles.actionButtonSubtext}>PDF / CSV</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Text Problem Description Input & Staged Attachment Card */}
+        {/* Primary Input Box */}
         <View style={styles.inputCard}>
-          {/* Selected Intent Pill */}
+          {/* Active Category Tag (if user tapped a quick action) */}
           {selectedIntent && (
-            <View style={styles.intentPill}>
-              <Text style={styles.intentPillText}>Target: {selectedIntent.replace(/_/g, ' ')}</Text>
-              <TouchableOpacity onPress={() => setSelectedIntent(undefined)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <X size={14} color={colors.primary} />
+            <View style={styles.activeIntentBanner}>
+              <Text style={styles.activeIntentText}>
+                Target: {selectedIntent.replace('_', ' ')}
+              </Text>
+              <TouchableOpacity onPress={() => setSelectedIntent(undefined)}>
+                <X size={14} color="#64748b" />
               </TouchableOpacity>
             </View>
           )}
 
-          {/* Staged Attachment Preview (Shown before submitting) */}
+          {/* Staged Attachment Preview */}
           {pendingAttachment && (
-            <View style={styles.attachmentBox}>
-              <View style={styles.attachmentLeft}>
-                {pendingAttachment.type === 'image' && pendingAttachment.previewUri ? (
-                  <Image source={{ uri: pendingAttachment.previewUri }} style={styles.attachmentThumb} />
-                ) : pendingAttachment.type === 'audio' ? (
-                  <View style={[styles.attachmentIconBadge, { backgroundColor: '#fce7f3' }]}>
-                    <Mic size={20} color="#db2777" />
-                  </View>
-                ) : (
-                  <View style={[styles.attachmentIconBadge, { backgroundColor: '#fef3c7' }]}>
-                    <FileText size={20} color="#d97706" />
-                  </View>
-                )}
-
-                <View style={styles.attachmentTextCol}>
-                  <View style={styles.attachmentTypeTag}>
-                    <Text style={styles.attachmentTypeTagText}>
-                      {pendingAttachment.type === 'image'
-                        ? '📸 PHOTO ATTACHED'
-                        : pendingAttachment.type === 'audio'
-                        ? '🎙️ VOICE RECORDING'
-                        : '📄 DOCUMENT ATTACHED'}
-                    </Text>
-                  </View>
-                  <Text style={styles.attachmentFileName} numberOfLines={1}>
-                    {pendingAttachment.fileName}
-                  </Text>
-                  <Text style={styles.attachmentHintText}>
-                    Add your question below, or tap Solve now
-                  </Text>
+            <View style={styles.attachmentChip}>
+              {pendingAttachment.previewUri ? (
+                <Image source={{ uri: pendingAttachment.previewUri }} style={styles.chipThumbnail} />
+              ) : (
+                <View style={styles.chipIconBox}>
+                  {pendingAttachment.type === 'audio' ? (
+                    <Mic size={14} color={colors.primary} />
+                  ) : (
+                    <FileText size={14} color={colors.primary} />
+                  )}
                 </View>
+              )}
+              <View style={styles.chipInfo}>
+                <Text style={styles.chipFileName} numberOfLines={1}>
+                  {pendingAttachment.fileName}
+                </Text>
+                <Text style={styles.chipFileType}>
+                  {pendingAttachment.type === 'image'
+                    ? 'Image attached'
+                    : pendingAttachment.type === 'audio'
+                    ? 'Audio note recorded'
+                    : 'Document attached'}
+                </Text>
               </View>
-
-              <TouchableOpacity
-                style={styles.attachmentRemoveBtn}
-                onPress={() => setPendingAttachment(null)}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <X size={16} color={colors.textSecondary} />
+              <TouchableOpacity onPress={clearAttachment} style={styles.chipRemoveBtn}>
+                <X size={14} color="#64748b" />
               </TouchableOpacity>
             </View>
           )}
 
+          {/* Text Input */}
           <TextInput
             style={styles.textInput}
-            placeholder={
-              pendingAttachment
-                ? "Ask a specific question about this (optional), e.g. 'Should I buy this?', 'What does this error mean?'..."
-                : "Type your problem, error, scam check or product question..."
-            }
-            placeholderTextColor={colors.textMuted}
-            multiline
-            numberOfLines={3}
             value={inputText}
             onChangeText={setInputText}
+            placeholder={
+              pendingAttachment
+                ? 'Ask a specific question about this (optional)...'
+                : 'Describe the problem, error, bill question, or scam check...'
+            }
+            placeholderTextColor="#94a3b8"
+            multiline
+            numberOfLines={3}
+            textAlignVertical="top"
           />
 
-          <View style={styles.inputFooter}>
-            <Text style={styles.inputHelp}>
-              {pendingAttachment
-                ? 'File attached — ready to solve'
-                : selectedIntent
-                ? 'Specialized analysis mode active'
-                : 'Auto-detects problem type'}
-            </Text>
+          {/* Modality Actions Toolbar */}
+          <View style={styles.toolbarRow}>
+            <View style={styles.toolIcons}>
+              {/* Camera */}
+              <TouchableOpacity
+                style={styles.toolBtn}
+                onPress={handleCameraScan}
+                accessibilityLabel="Scan with Camera"
+              >
+                <Camera size={18} color="#475569" />
+              </TouchableOpacity>
+
+              {/* Gallery */}
+              <TouchableOpacity
+                style={styles.toolBtn}
+                onPress={handleGalleryPick}
+                accessibilityLabel="Upload Screenshot or Photo"
+              >
+                <ImageIcon size={18} color="#475569" />
+              </TouchableOpacity>
+
+              {/* Document / PDF / CSV */}
+              <TouchableOpacity
+                style={styles.toolBtn}
+                onPress={handleDocumentPick}
+                accessibilityLabel="Upload PDF or CSV"
+              >
+                <FileText size={18} color="#475569" />
+              </TouchableOpacity>
+
+              {/* Voice Record */}
+              <TouchableOpacity
+                style={[styles.toolBtn, isRecording && styles.toolBtnRecording]}
+                onPress={isRecording ? stopRecording : startRecording}
+                accessibilityLabel="Record Voice Note"
+              >
+                {isRecording ? (
+                  <Square size={16} color="#dc2626" fill="#dc2626" />
+                ) : (
+                  <Mic size={18} color="#475569" />
+                )}
+              </TouchableOpacity>
+            </View>
+
+            {/* Solve Button */}
             <TouchableOpacity
               style={[
-                styles.sendButton,
-                !canSubmit && styles.sendButtonDisabled,
+                styles.solveBtn,
+                !hasContentToSubmit && styles.solveBtnDisabled,
               ]}
               onPress={handleSolve}
-              disabled={!canSubmit}
-              activeOpacity={0.8}
+              disabled={!hasContentToSubmit || loading}
             >
               {loading ? (
                 <ActivityIndicator size="small" color="#ffffff" />
               ) : (
                 <>
-                  <Text style={styles.sendButtonText}>Solve</Text>
+                  <Text style={styles.solveBtnText}>Solve</Text>
                   <Send size={13} color="#ffffff" />
                 </>
               )}
@@ -498,96 +433,119 @@ export function HomeScreen() {
           </View>
         </View>
 
-        {/* Quick Actions Shortcuts */}
-        <View style={styles.section}>
+        {/* 6 Useful Quick Actions */}
+        <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>QUICK ACTIONS</Text>
+        </View>
 
-          <View style={styles.quickActionsList}>
-            <TouchableOpacity
-              style={[
-                styles.quickActionCard,
-                selectedIntent === 'TECHNICAL_ERROR' && styles.quickActionSelected,
-              ]}
-              onPress={() => setSelectedIntent('TECHNICAL_ERROR')}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.qaIcon, { backgroundColor: '#eff6ff' }]}>
-                <Wrench size={18} color="#2563eb" />
-              </View>
-              <View style={styles.qaContent}>
-                <Text style={styles.qaTitle}>Fix Screenshot</Text>
-                <Text style={styles.qaDesc}>Solve crash logs, errors &amp; stack traces</Text>
-              </View>
-            </TouchableOpacity>
+        <View style={styles.quickActionsList}>
+          {/* 1. Fix Error */}
+          <TouchableOpacity
+            style={[
+              styles.quickActionItem,
+              selectedIntent === 'TECHNICAL_ERROR' && styles.quickActionSelected,
+            ]}
+            onPress={() => setSelectedIntent('TECHNICAL_ERROR')}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.qaIconWrapper, { backgroundColor: '#eff6ff' }]}>
+              <Wrench size={16} color="#2563eb" />
+            </View>
+            <View style={styles.qaContent}>
+              <Text style={styles.qaTitle}>Fix Error</Text>
+              <Text style={styles.qaSubtitle}>Crash logs, terminal bugs &amp; stack traces</Text>
+            </View>
+          </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[
-                styles.quickActionCard,
-                selectedIntent === 'BILL_EXPLANATION' && styles.quickActionSelected,
-              ]}
-              onPress={() => setSelectedIntent('BILL_EXPLANATION')}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.qaIcon, { backgroundColor: '#ecfdf5' }]}>
-                <Receipt size={18} color="#059669" />
-              </View>
-              <View style={styles.qaContent}>
-                <Text style={styles.qaTitle}>Explain Bill</Text>
-                <Text style={styles.qaDesc}>Understand fees, breakdowns &amp; surcharges</Text>
-              </View>
-            </TouchableOpacity>
+          {/* 2. Check Message */}
+          <TouchableOpacity
+            style={[
+              styles.quickActionItem,
+              selectedIntent === 'SCAM_ANALYSIS' && styles.quickActionSelected,
+            ]}
+            onPress={() => setSelectedIntent('SCAM_ANALYSIS')}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.qaIconWrapper, { backgroundColor: '#fef2f2' }]}>
+              <ShieldAlert size={16} color="#dc2626" />
+            </View>
+            <View style={styles.qaContent}>
+              <Text style={styles.qaTitle}>Check Message</Text>
+              <Text style={styles.qaSubtitle}>Phishing links, OTP requests &amp; fake prizes</Text>
+            </View>
+          </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[
-                styles.quickActionCard,
-                selectedIntent === 'SCAM_ANALYSIS' && styles.quickActionSelected,
-              ]}
-              onPress={() => setSelectedIntent('SCAM_ANALYSIS')}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.qaIcon, { backgroundColor: '#fef2f2' }]}>
-                <ShieldAlert size={18} color="#dc2626" />
-              </View>
-              <View style={styles.qaContent}>
-                <Text style={styles.qaTitle}>Scam Check</Text>
-                <Text style={styles.qaDesc}>Check phishing messages &amp; suspicious links</Text>
-              </View>
-            </TouchableOpacity>
+          {/* 3. Explain Bill */}
+          <TouchableOpacity
+            style={[
+              styles.quickActionItem,
+              selectedIntent === 'BILL_EXPLANATION' && styles.quickActionSelected,
+            ]}
+            onPress={() => setSelectedIntent('BILL_EXPLANATION')}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.qaIconWrapper, { backgroundColor: '#ecfdf5' }]}>
+              <Receipt size={16} color="#059669" />
+            </View>
+            <View style={styles.qaContent}>
+              <Text style={styles.qaTitle}>Explain Bill</Text>
+              <Text style={styles.qaSubtitle}>Utility breakdowns, surcharges &amp; due dates</Text>
+            </View>
+          </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[
-                styles.quickActionCard,
-                selectedIntent === 'PRODUCT_ANALYSIS' && styles.quickActionSelected,
-              ]}
-              onPress={() => setSelectedIntent('PRODUCT_ANALYSIS')}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.qaIcon, { backgroundColor: '#f5f3ff' }]}>
-                <ShoppingCart size={18} color="#7c3aed" />
-              </View>
-              <View style={styles.qaContent}>
-                <Text style={styles.qaTitle}>Buy Advisor</Text>
-                <Text style={styles.qaDesc}>Honest pros, cons &amp; specification checks</Text>
-              </View>
-            </TouchableOpacity>
+          {/* 4. Analyze Product */}
+          <TouchableOpacity
+            style={[
+              styles.quickActionItem,
+              selectedIntent === 'PRODUCT_ANALYSIS' && styles.quickActionSelected,
+            ]}
+            onPress={() => setSelectedIntent('PRODUCT_ANALYSIS')}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.qaIconWrapper, { backgroundColor: '#f5f3ff' }]}>
+              <ShoppingCart size={16} color="#7c3aed" />
+            </View>
+            <View style={styles.qaContent}>
+              <Text style={styles.qaTitle}>Analyze Product</Text>
+              <Text style={styles.qaSubtitle}>Specs, pros, cons &amp; buyer checklist</Text>
+            </View>
+          </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[
-                styles.quickActionCard,
-                selectedIntent === 'SUBSCRIPTION_ANALYSIS' && styles.quickActionSelected,
-              ]}
-              onPress={() => setSelectedIntent('SUBSCRIPTION_ANALYSIS')}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.qaIcon, { backgroundColor: '#fffbeb' }]}>
-                <Repeat size={18} color="#d97706" />
-              </View>
-              <View style={styles.qaContent}>
-                <Text style={styles.qaTitle}>Subscriptions</Text>
-                <Text style={styles.qaDesc}>Audit statements for recurring silent charges</Text>
-              </View>
-            </TouchableOpacity>
-          </View>
+          {/* 5. Find Subscription */}
+          <TouchableOpacity
+            style={[
+              styles.quickActionItem,
+              selectedIntent === 'SUBSCRIPTION_ANALYSIS' && styles.quickActionSelected,
+            ]}
+            onPress={() => setSelectedIntent('SUBSCRIPTION_ANALYSIS')}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.qaIconWrapper, { backgroundColor: '#fffbeb' }]}>
+              <Repeat size={16} color="#d97706" />
+            </View>
+            <View style={styles.qaContent}>
+              <Text style={styles.qaTitle}>Find Subscription</Text>
+              <Text style={styles.qaSubtitle}>Audit recurring charges &amp; yearly cost</Text>
+            </View>
+          </TouchableOpacity>
+
+          {/* 6. Create Task */}
+          <TouchableOpacity
+            style={[
+              styles.quickActionItem,
+              selectedIntent === 'VOICE_TASK_EXTRACTION' && styles.quickActionSelected,
+            ]}
+            onPress={() => setSelectedIntent('VOICE_TASK_EXTRACTION')}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.qaIconWrapper, { backgroundColor: '#f0fdf4' }]}>
+              <CheckSquare size={16} color="#16a34a" />
+            </View>
+            <View style={styles.qaContent}>
+              <Text style={styles.qaTitle}>Create Task</Text>
+              <Text style={styles.qaSubtitle}>Convert spoken dictation into actionable items</Text>
+            </View>
+          </TouchableOpacity>
         </View>
       </ScrollView>
 
@@ -610,339 +568,227 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 16,
-    paddingBottom: 40,
+    paddingBottom: 30,
   },
   topHeaderBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 12,
-    marginBottom: 6,
-  },
-  brandRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  logoBadge: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
+    marginBottom: 8,
   },
   brandTitle: {
     fontSize: 20,
-    fontWeight: '800',
-    color: colors.textPrimary,
-    letterSpacing: -0.3,
+    fontWeight: '700',
+    color: '#0f172a',
+    letterSpacing: -0.4,
   },
-  brandSubtitle: {
+  statusIndicatorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 2,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  statusText: {
     fontSize: 11,
+    color: '#64748b',
     fontWeight: '500',
-    color: colors.textSecondary,
   },
-  langSelectorBtn: {
+  langPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
     backgroundColor: '#ffffff',
     paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  langSelectorText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.primary,
-  },
-  statusBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#ffffff',
     paddingVertical: 5,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    alignSelf: 'flex-start',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    marginBottom: 16,
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.textSecondary,
-  },
-  dot: {
-    color: colors.textMuted,
-  },
-  offlineBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: colors.warningLight,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#fde68a',
-    marginBottom: 16,
-  },
-  offlineText: {
-    fontSize: 12,
-    color: '#92400e',
-    fontWeight: '500',
-  },
-  reconnectBtn: {
-    marginTop: 6,
-    backgroundColor: colors.primary,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 6,
-    alignSelf: 'flex-start',
-  },
-  reconnectBtnText: {
-    color: '#ffffff',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  actionGrid: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 10,
-    marginBottom: 16,
-  },
-  primaryActionButton: {
-    flex: 1,
-    backgroundColor: '#ffffff',
     borderRadius: 16,
-    paddingVertical: 14,
-    paddingHorizontal: 4,
-    alignItems: 'center',
     borderWidth: 1,
     borderColor: '#e2e8f0',
-    minHeight: 90,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 1,
   },
-  iconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 6,
+  langPillText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#334155',
   },
-  actionButtonText: {
-    fontSize: 13,
+  headerSection: {
+    marginBottom: 12,
+  },
+  questionHeading: {
+    fontSize: 17,
     fontWeight: '700',
-    color: colors.textPrimary,
+    color: '#0f172a',
   },
-  actionButtonSubtext: {
-    fontSize: 10,
-    color: colors.textSecondary,
+  questionSubheading: {
+    fontSize: 12,
+    color: '#64748b',
     marginTop: 2,
   },
   inputCard: {
     backgroundColor: '#ffffff',
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 20,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: '#e2e8f0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
+    padding: 12,
+    marginBottom: 20,
   },
-  intentPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#eef2ff',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-    marginBottom: 10,
-  },
-  intentPillText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.primary,
-  },
-  attachmentBox: {
+  activeIntentBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: '#f1f5f9',
-    borderRadius: 12,
-    padding: 10,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginBottom: 8,
   },
-  attachmentLeft: {
+  activeIntentText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  attachmentChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
-    gap: 10,
-  },
-  attachmentThumb: {
-    width: 52,
-    height: 52,
+    gap: 8,
+    backgroundColor: '#f8fafc',
+    padding: 8,
     borderRadius: 8,
-    backgroundColor: '#cbd5e1',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginBottom: 8,
   },
-  attachmentIconBadge: {
-    width: 48,
-    height: 48,
-    borderRadius: 10,
+  chipThumbnail: {
+    width: 36,
+    height: 36,
+    borderRadius: 4,
+    backgroundColor: '#e2e8f0',
+  },
+  chipIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 4,
+    backgroundColor: '#eff6ff',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  attachmentTextCol: {
+  chipInfo: {
     flex: 1,
   },
-  attachmentTypeTag: {
-    backgroundColor: '#e2e8f0',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    alignSelf: 'flex-start',
-    marginBottom: 3,
+  chipFileName: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#0f172a',
   },
-  attachmentTypeTagText: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: colors.textSecondary,
-    letterSpacing: 0.4,
+  chipFileType: {
+    fontSize: 10,
+    color: '#64748b',
+    marginTop: 1,
   },
-  attachmentFileName: {
+  chipRemoveBtn: {
+    padding: 6,
+  },
+  textInput: {
     fontSize: 13,
-    fontWeight: '700',
-    color: colors.textPrimary,
+    color: '#0f172a',
+    lineHeight: 18,
+    minHeight: 60,
+    maxHeight: 120,
+    padding: 0,
+    marginBottom: 10,
   },
-  attachmentHintText: {
-    fontSize: 11,
-    color: colors.textSecondary,
-    marginTop: 2,
+  toolbarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
   },
-  attachmentRemoveBtn: {
-    padding: 8,
-    backgroundColor: '#ffffff',
-    borderRadius: 8,
+  toolIcons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  toolBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 6,
+    backgroundColor: '#f8fafc',
+    alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
     borderColor: '#e2e8f0',
   },
-  textInput: {
-    fontSize: 14,
-    color: colors.textPrimary,
-    minHeight: 64,
-    textAlignVertical: 'top',
-    padding: 0,
-    marginBottom: 8,
-    lineHeight: 20,
+  toolBtnRecording: {
+    borderColor: '#dc2626',
+    backgroundColor: '#fef2f2',
   },
-  inputFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
-    paddingTop: 8,
-  },
-  inputHelp: {
-    fontSize: 11,
-    color: colors.textMuted,
-    fontStyle: 'italic',
-  },
-  sendButton: {
+  solveBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
     backgroundColor: colors.primary,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 10,
-    minHeight: 38,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 2,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    borderRadius: 6,
   },
-  sendButtonDisabled: {
+  solveBtnDisabled: {
     backgroundColor: '#cbd5e1',
-    shadowOpacity: 0,
-    elevation: 0,
   },
-  sendButtonText: {
+  solveBtnText: {
     color: '#ffffff',
-    fontSize: 13,
-    fontWeight: '700',
+    fontSize: 12,
+    fontWeight: '600',
   },
-  section: {
-    marginBottom: 20,
+  sectionHeader: {
+    marginBottom: 8,
   },
   sectionTitle: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
-    color: colors.textSecondary,
-    letterSpacing: 0.6,
-    marginBottom: 10,
+    color: '#64748b',
+    letterSpacing: 0.5,
   },
   quickActionsList: {
     gap: 8,
   },
-  quickActionCard: {
+  quickActionItem: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
     backgroundColor: '#ffffff',
-    padding: 12,
-    borderRadius: 14,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: '#e2e8f0',
+    padding: 12,
   },
   quickActionSelected: {
     borderColor: colors.primary,
     backgroundColor: '#f5f3ff',
   },
-  qaIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
+  qaIconWrapper: {
+    width: 32,
+    height: 32,
+    borderRadius: 6,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
   },
   qaContent: {
     flex: 1,
   },
   qaTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.textPrimary,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0f172a',
   },
-  qaDesc: {
+  qaSubtitle: {
     fontSize: 11,
-    color: colors.textSecondary,
-    marginTop: 2,
+    color: '#64748b',
+    marginTop: 1,
   },
 });

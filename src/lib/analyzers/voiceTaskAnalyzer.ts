@@ -10,6 +10,7 @@ import { PROMPTS, getLanguageInstruction } from '../ai/promptEngine';
 import { safeJsonParse } from '../ai/jsonRepair';
 import { DeterministicFallbackEngine } from '../ai/deterministicFallback';
 import { AnalyzerExecutionOutput } from './screenshotAnalyzer';
+import { VoiceTaskResultSchema } from '../ai/validationSchemas';
 
 export class VoiceTaskAnalyzer {
   static async analyze(
@@ -20,7 +21,7 @@ export class VoiceTaskAnalyzer {
 
     try {
       const health = await localOllamaProvider.checkHealth();
-      if (!health.isAvailable) {
+      if (!health.isAvailable || !health.hasRequiredModel) {
         return {
           data: fallback,
           aiModelUsed: 'deterministic_fallback',
@@ -37,20 +38,25 @@ export class VoiceTaskAnalyzer {
 
       const parsed = safeJsonParse<VoiceTaskResult>(aiRes.text, fallback);
 
-      if (parsed.success && Array.isArray(parsed.data.tasks)) {
-        return {
-          data: {
-            ...parsed.data,
-            tasks: parsed.data.tasks.map((t) => ({
-              ...t,
-              completed: false,
-            })),
-            detectedPeople: Array.isArray(parsed.data.detectedPeople) ? parsed.data.detectedPeople : [],
-            detectedDates: Array.isArray(parsed.data.detectedDates) ? parsed.data.detectedDates : [],
-          },
-          aiModelUsed: aiRes.model,
-          fallbackUsed: false,
-        };
+      if (parsed.success) {
+        const validated = VoiceTaskResultSchema.safeParse(parsed.data);
+        if (validated.success) {
+          return {
+            data: {
+              ...validated.data,
+              tasks: validated.data.tasks.map((t) => ({
+                ...t,
+                dueDate: t.dueDate ?? null,
+                time: t.time ?? null,
+                person: t.person ?? null,
+                notes: t.notes ?? null,
+                completed: false,
+              })),
+            },
+            aiModelUsed: aiRes.model,
+            fallbackUsed: false,
+          };
+        }
       }
     } catch (err: unknown) {
       console.warn('Voice Task AI analyzer failed, using deterministic fallback:', err);

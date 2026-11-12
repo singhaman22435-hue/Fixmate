@@ -68,13 +68,33 @@ export class OllamaProvider implements AIProvider {
       });
 
       const modelNames = models.map((m) => m.name.toLowerCase());
-      const hasRequiredModel = modelNames.some(
-        (name) => name.includes(this.defaultModel.toLowerCase()) || name.includes('llama') || name.includes('mistral') || name.includes('qwen')
-      );
-      const hasVisionModel = models.some((m) => m.isVisionCapable);
+      const targetModel = this.defaultModel.toLowerCase().trim();
+      const exactMatch = models.find((m) => {
+        const name = m.name.toLowerCase();
+        return (
+          name === targetModel ||
+          name === `${targetModel}:latest` ||
+          name.split(':')[0] === targetModel.split(':')[0]
+        );
+      });
 
-      const detectedVisionModel = models.find((m) => m.isVisionCapable)?.name || this.defaultVisionModel;
-      const detectedDefaultModel = models.length > 0 ? models[0].name : this.defaultModel;
+      const hasRequiredModel = Boolean(exactMatch);
+      const detectedDefaultModel = exactMatch ? exactMatch.name : (models[0]?.name || this.defaultModel);
+
+      // Vision model check
+      const targetVision = this.defaultVisionModel.toLowerCase().trim();
+      const visionMatch = models.find((m) => {
+        const name = m.name.toLowerCase();
+        return (
+          name === targetVision ||
+          m.isVisionCapable ||
+          name.includes('vision') ||
+          name.includes('llava') ||
+          name.includes('qwen3.5')
+        );
+      });
+      const hasVisionModel = Boolean(visionMatch);
+      const detectedVisionModel = visionMatch ? visionMatch.name : this.defaultVisionModel;
 
       const healthResult: AIHealthStatus = {
         isAvailable: true,
@@ -85,6 +105,9 @@ export class OllamaProvider implements AIProvider {
         selectedVisionModel: detectedVisionModel,
         hasRequiredModel,
         hasVisionModel,
+        error: hasRequiredModel
+          ? undefined
+          : `Configured model "${this.defaultModel}" not found in Ollama. Run: ollama pull ${this.defaultModel}`,
       };
 
       this.cachedHealth = healthResult;

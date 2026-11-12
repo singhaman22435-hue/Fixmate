@@ -46,6 +46,7 @@ export function AudioRecorder({ onRecorded, isProcessing }: AudioRecorderProps) 
   const audioChunksRef = useRef<Blob[]>([]);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const latestTranscriptRef = useRef('');
 
   useEffect(() => {
     return () => {
@@ -63,6 +64,7 @@ export function AudioRecorder({ onRecorded, isProcessing }: AudioRecorderProps) 
   const startRecording = async () => {
     setErrorMessage(null);
     setTranscript('');
+    latestTranscriptRef.current = '';
     setTimerSeconds(0);
     audioChunksRef.current = [];
 
@@ -82,7 +84,9 @@ export function AudioRecorder({ onRecorded, isProcessing }: AudioRecorderProps) 
           for (let i = 0; i < Object.keys(event.results).length; i++) {
             currentTranscript += event.results[i][0].transcript + ' ';
           }
-          setTranscript(currentTranscript.trim());
+          const cleanTranscript = currentTranscript.trim();
+          latestTranscriptRef.current = cleanTranscript;
+          setTranscript(cleanTranscript);
         };
 
         recognition.onerror = (e) => {
@@ -112,7 +116,10 @@ export function AudioRecorder({ onRecorded, isProcessing }: AudioRecorderProps) 
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         // Stop all audio tracks
         stream.getTracks().forEach((track) => track.stop());
-        onRecorded(audioBlob, transcript);
+
+        // Always pass the fresh latest transcript ref, avoiding stale closure
+        const finalTranscript = latestTranscriptRef.current || transcript;
+        onRecorded(audioBlob, finalTranscript);
       };
 
       mediaRecorder.start();
