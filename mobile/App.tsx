@@ -7,6 +7,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 
 enableScreens();
 import { SettingsProvider } from './src/context/SettingsContext';
+import { NotificationProvider } from './src/context/NotificationContext';
 import { HomeScreen } from './src/screens/HomeScreen';
 import { TasksScreen } from './src/screens/TasksScreen';
 import { SubscriptionsScreen } from './src/screens/SubscriptionsScreen';
@@ -26,8 +27,9 @@ const Tab = createBottomTabNavigator();
 export default function App() {
   return (
     <SafeAreaProvider>
-      <SettingsProvider>
-        <NavigationContainer>
+      <NotificationProvider>
+        <SettingsProvider>
+          <NavigationContainer>
           <StatusBar style="dark" backgroundColor="#f8fafc" />
           <Tab.Navigator
             screenOptions={{
@@ -91,6 +93,7 @@ export default function App() {
           </Tab.Navigator>
         </NavigationContainer>
       </SettingsProvider>
-    </SafeAreaProvider>
+    </NotificationProvider>
+  </SafeAreaProvider>
   );
 }

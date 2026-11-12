@@ -19,6 +19,9 @@ import {
   Cpu,
   ShieldCheck,
   AlertTriangle,
+  MessageSquare,
+  Send,
+  Loader2,
 } from 'lucide-react';
 
 export interface UnifiedResultRendererProps {
@@ -28,6 +31,105 @@ export interface UnifiedResultRendererProps {
 
 export function UnifiedResultRenderer({ result, onReset }: UnifiedResultRendererProps) {
   const [copiedSummary, setCopiedSummary] = useState(false);
+  const [followUpText, setFollowUpText] = useState('');
+  const [chatMessages, setChatMessages] = useState<Array<{ id: string; role: 'user' | 'assistant'; content: string }>>([]);
+  const [sendingChat, setSendingChat] = useState(false);
+  const [suggestedChips, setSuggestedChips] = useState<string[]>(() => {
+    switch (result.intent) {
+      case 'SCAM_ANALYSIS':
+        return [
+          'What if I already clicked the link?',
+          'How can I block and report this sender?',
+          'Can you draft a complaint report for me?',
+        ];
+      case 'BILL_EXPLANATION':
+        return [
+          'How do I dispute this charge with the provider?',
+          'How to reduce next month bill?',
+          'Is there any late penalty or surcharge?',
+        ];
+      case 'SUBSCRIPTION_ANALYSIS':
+        return [
+          'How do I cancel this subscription?',
+          'How to revoke autopay mandate?',
+          'Can I get a refund for this month?',
+        ];
+      case 'TECHNICAL_ERROR':
+        return [
+          'What if the command fails with EPERM?',
+          'How do I check if the port is busy?',
+          'Explain why this error occurred',
+        ];
+      case 'PRODUCT_ANALYSIS':
+        return [
+          'Is there a better alternative at this price?',
+          'What are the main drawbacks?',
+          'Should I wait for a price drop?',
+        ];
+      default:
+        return [
+          'What is the very next action I should take?',
+          'Explain this in simpler terms',
+          'Add a task reminder for this to My Tasks',
+        ];
+    }
+  });
+
+  const handleSendChat = async (customText?: string) => {
+    const textToSend = (customText || followUpText).trim();
+    if (!textToSend || sendingChat) return;
+
+    const userMsg = {
+      id: `user_${Date.now()}`,
+      role: 'user' as const,
+      content: textToSend,
+    };
+
+    setChatMessages((prev) => [...prev, userMsg]);
+    setFollowUpText('');
+    setSendingChat(true);
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          analysisId: result.analysisId,
+          message: textToSend,
+          history: [...chatMessages, userMsg],
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error('Failed to send follow-up query');
+      }
+
+      const data = await res.json();
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: data.messageId || `msg_${Date.now()}`,
+          role: 'assistant',
+          content: data.content,
+        },
+      ]);
+
+      if (data.suggestedFollowUps && data.suggestedFollowUps.length > 0) {
+        setSuggestedChips(data.suggestedFollowUps);
+      }
+    } catch {
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: `err_${Date.now()}`,
+          role: 'assistant',
+          content: 'Unable to reach local AI. Please verify your connection or visit Setup.',
+        },
+      ]);
+    } finally {
+      setSendingChat(false);
+    }
+  };
 
   const copySummary = () => {
     const textToCopy = `FixMate Solution: ${result.title}\n${result.summary}`;
@@ -106,6 +208,100 @@ export function UnifiedResultRenderer({ result, onReset }: UnifiedResultRenderer
 
       {/* Specialized Content */}
       {renderResultBody()}
+
+      {/* ────────────────────────────────────────────────────────── */}
+      {/* Follow-Up / Continue Conversation Section                  */}
+      {/* ────────────────────────────────────────────────────────── */}
+      <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 space-y-4 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 flex items-center justify-center shrink-0">
+            <MessageSquare className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+              Continue This Conversation
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Ask follow-up questions, request draft replies, or clarify any step.
+            </p>
+          </div>
+        </div>
+
+        {/* Suggested Follow-Up Chips */}
+        {suggestedChips.length > 0 && (
+          <div className="flex flex-wrap gap-2 pt-1">
+            {suggestedChips.map((chip, idx) => (
+              <button
+                key={`chip_${idx}`}
+                type="button"
+                onClick={() => handleSendChat(chip)}
+                disabled={sendingChat}
+                className="text-xs px-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700/80 text-slate-700 dark:text-slate-300 transition-colors cursor-pointer text-left disabled:opacity-50"
+              >
+                {chip}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Chat Thread */}
+        {chatMessages.length > 0 && (
+          <div className="space-y-3 pt-2">
+            {chatMessages.map((msg) => (
+              <div
+                key={msg.id}
+                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                <div
+                  className={`max-w-[85%] rounded-xl px-4 py-2.5 text-xs leading-relaxed ${
+                    msg.role === 'user'
+                      ? 'bg-indigo-600 text-white rounded-br-xs'
+                      : 'bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 rounded-bl-xs space-y-2'
+                  }`}
+                >
+                  <p className="whitespace-pre-wrap">{msg.content}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Thinking Loader */}
+        {sendingChat && (
+          <div className="flex items-center gap-2 text-xs text-slate-500 italic py-1">
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600" />
+            <span>FixMate is analyzing your follow-up...</span>
+          </div>
+        )}
+
+        {/* Follow-Up Input Box */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSendChat();
+          }}
+          className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800"
+        >
+          <input
+            type="text"
+            value={followUpText}
+            onChange={(e) => setFollowUpText(e.target.value)}
+            placeholder="Ask a follow-up about this problem..."
+            disabled={sendingChat}
+            className="flex-1 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-lg px-3.5 py-2 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          />
+          <Button
+            type="submit"
+            variant="primary"
+            size="sm"
+            disabled={!followUpText.trim() || sendingChat}
+            className="h-8.5 px-3"
+          >
+            <Send className="w-3.5 h-3.5" />
+            <span>Send</span>
+          </Button>
+        </form>
+      </div>
 
       {/* Bottom Sticky Reset Bar */}
       <div className="pt-6 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">

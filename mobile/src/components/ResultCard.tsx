@@ -7,6 +7,8 @@ import {
   ScrollView,
   Share,
   Platform,
+  TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { colors, spacing, typography, touchTarget } from '../theme/colors';
 import {
@@ -31,9 +33,12 @@ import {
   Calendar,
   Clock,
   Info,
+  MessageSquare,
+  Send,
 } from 'lucide-react-native';
-import { MobileAnalysisResult, ApiService } from '../services/api';
+import { MobileAnalysisResult, ApiService, FollowUpChatMessage } from '../services/api';
 import { useSettings } from '../context/SettingsContext';
+import { useNotification } from '../context/NotificationContext';
 
 export function ResultCard({
   result,
@@ -43,12 +48,105 @@ export function ResultCard({
   onReset: () => void;
 }) {
   const { selectedLanguage } = useSettings();
+  const { showNotification } = useNotification();
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [tasks, setTasks] = useState<any[]>(
     result.result?.type === 'VOICE_TASK_EXTRACTION' ? result.result.data?.tasks || [] : []
   );
   const [tasksSaved, setTasksSaved] = useState(false);
   const [savingTasks, setSavingTasks] = useState(false);
+
+  // Follow-up conversation state
+  const [followUpText, setFollowUpText] = useState('');
+  const [chatMessages, setChatMessages] = useState<FollowUpChatMessage[]>([]);
+  const [sendingFollowUp, setSendingFollowUp] = useState(false);
+  const [suggestedChips, setSuggestedChips] = useState<string[]>(() => {
+    switch (result.intent) {
+      case 'SCAM_ANALYSIS':
+        return [
+          'What if I already clicked it?',
+          'How can I block this sender?',
+          'Can you write a complaint message?',
+        ];
+      case 'BILL_EXPLANATION':
+        return [
+          'How do I dispute this charge?',
+          'How to lower next month bill?',
+          'Is there any late penalty?',
+        ];
+      case 'SUBSCRIPTION_ANALYSIS':
+        return [
+          'How do I cancel this subscription?',
+          'How to stop bank autopay?',
+          'Can I get a refund?',
+        ];
+      case 'TECHNICAL_ERROR':
+        return [
+          'What if command fails with EPERM?',
+          'How to check if port is busy?',
+          'Explain why this error occurred',
+        ];
+      case 'PRODUCT_ANALYSIS':
+        return [
+          'Is there a better alternative?',
+          'What are the main drawbacks?',
+          'Should I wait for a sale?',
+        ];
+      default:
+        return [
+          'What is the next action I should take?',
+          'Explain this in simpler terms',
+          'Add a task reminder for this',
+        ];
+    }
+  });
+
+  const handleSendFollowUp = async (customText?: string) => {
+    const textToSend = (customText || followUpText).trim();
+    if (!textToSend || sendingFollowUp) return;
+
+    const userMsg: FollowUpChatMessage = {
+      id: `user_${Date.now()}`,
+      role: 'user',
+      content: textToSend,
+      createdAt: new Date().toISOString(),
+    };
+
+    setChatMessages((prev) => [...prev, userMsg]);
+    setFollowUpText('');
+    setSendingFollowUp(true);
+
+    try {
+      const assistantMsg = await ApiService.sendFollowUp({
+        analysisId: result.analysisId,
+        message: textToSend,
+        language: selectedLanguage,
+        history: [...chatMessages, userMsg].map((m) => ({
+          role: m.role,
+          content: m.content,
+        })),
+      });
+
+      setChatMessages((prev) => [...prev, assistantMsg]);
+      if (assistantMsg.suggestedFollowUps && assistantMsg.suggestedFollowUps.length > 0) {
+        setSuggestedChips(assistantMsg.suggestedFollowUps);
+      }
+
+      showNotification({
+        type: 'info',
+        title: 'FixMate Replied',
+        message: assistantMsg.content.slice(0, 65) + (assistantMsg.content.length > 65 ? '...' : ''),
+      });
+    } catch {
+      showNotification({
+        type: 'warning',
+        title: 'Follow-Up Notice',
+        message: 'Could not reach server. Using offline guidance.',
+      });
+    } finally {
+      setSendingFollowUp(false);
+    }
+  };
 
   const handleSaveAllVoiceTasks = async () => {
     setSavingTasks(true);
@@ -614,6 +712,108 @@ export function ResultCard({
 
       {/* Main Specialized Content */}
       {renderContent()}
+
+      {/* ─────────────────────────────────────────────────── */}
+      {/* Follow-Up / Continue Conversation Section         */}
+      {/* ─────────────────────────────────────────────────── */}
+      <View style={styles.followUpSection}>
+        <View style={styles.followUpHeader}>
+          <View style={styles.followUpIconBadge}>
+            <MessageSquare size={16} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.followUpHeading}>Continue This Conversation</Text>
+            <Text style={styles.followUpSubheading}>
+              Ask follow-up questions, request drafts, or clarify specific points.
+            </Text>
+          </View>
+        </View>
+
+        {/* Dynamic Suggested Question Chips */}
+        {suggestedChips.length > 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chipsScroll}
+          >
+            {suggestedChips.map((chip, idx) => (
+              <TouchableOpacity
+                key={`chip_${idx}`}
+                style={styles.chipPill}
+                onPress={() => handleSendFollowUp(chip)}
+                disabled={sendingFollowUp}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.chipText}>{chip}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
+
+        {/* Conversation Thread */}
+        {chatMessages.length > 0 && (
+          <View style={styles.chatThread}>
+            {chatMessages.map((msg) => (
+              <View
+                key={msg.id}
+                style={[
+                  styles.messageRow,
+                  msg.role === 'user' ? styles.userRow : styles.assistantRow,
+                ]}
+              >
+                <View
+                  style={[
+                    styles.messageBubble,
+                    msg.role === 'user' ? styles.userBubble : styles.assistantBubble,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.messageText,
+                      msg.role === 'user' ? styles.userText : styles.assistantText,
+                    ]}
+                  >
+                    {msg.content}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Sending Loader */}
+        {sendingFollowUp && (
+          <View style={styles.thinkingRow}>
+            <ActivityIndicator size="small" color={colors.primary} />
+            <Text style={styles.thinkingText}>FixMate is thinking...</Text>
+          </View>
+        )}
+
+        {/* Input Box */}
+        <View style={styles.followUpInputContainer}>
+          <TextInput
+            style={styles.followUpInput}
+            value={followUpText}
+            onChangeText={setFollowUpText}
+            placeholder="Ask a follow-up about this problem..."
+            placeholderTextColor="#94a3b8"
+            multiline
+            maxLength={500}
+            editable={!sendingFollowUp}
+          />
+          <TouchableOpacity
+            style={[
+              styles.sendFollowUpBtn,
+              !followUpText.trim() || sendingFollowUp ? styles.sendBtnDisabled : null,
+            ]}
+            onPress={() => handleSendFollowUp()}
+            disabled={!followUpText.trim() || sendingFollowUp}
+            activeOpacity={0.7}
+          >
+            <Send size={15} color="#ffffff" />
+          </TouchableOpacity>
+        </View>
+      </View>
 
       {/* Bottom CTA Button */}
       <View style={styles.footer}>
@@ -1183,5 +1383,144 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 15,
     fontWeight: '700',
+  },
+  followUpSection: {
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    padding: 14,
+    marginTop: 16,
+    marginBottom: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  followUpHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 8,
+  },
+  followUpIconBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#ede9fe',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  followUpHeading: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  followUpSubheading: {
+    fontSize: 11,
+    color: '#64748b',
+    marginTop: 1,
+  },
+  chipsScroll: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingVertical: 6,
+  },
+  chipPill: {
+    backgroundColor: '#f1f5f9',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  chipText: {
+    fontSize: 11,
+    color: '#334155',
+    fontWeight: '500',
+  },
+  chatThread: {
+    marginVertical: 10,
+    gap: 8,
+  },
+  messageRow: {
+    flexDirection: 'row',
+    marginVertical: 2,
+  },
+  userRow: {
+    justifyContent: 'flex-end',
+  },
+  assistantRow: {
+    justifyContent: 'flex-start',
+  },
+  messageBubble: {
+    maxWidth: '88%',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  userBubble: {
+    backgroundColor: colors.primary,
+    borderBottomRightRadius: 2,
+  },
+  assistantBubble: {
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderBottomLeftRadius: 2,
+  },
+  messageText: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  userText: {
+    color: '#ffffff',
+  },
+  assistantText: {
+    color: '#0f172a',
+  },
+  thinkingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+  },
+  thinkingText: {
+    fontSize: 12,
+    color: '#64748b',
+    fontStyle: 'italic',
+  },
+  followUpInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginTop: 8,
+    gap: 8,
+  },
+  followUpInput: {
+    flex: 1,
+    fontSize: 13,
+    color: '#0f172a',
+    maxHeight: 80,
+    minHeight: 38,
+    paddingVertical: 6,
+  },
+  sendFollowUpBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sendBtnDisabled: {
+    backgroundColor: '#cbd5e1',
   },
 });

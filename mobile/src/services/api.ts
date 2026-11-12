@@ -154,6 +154,14 @@ export interface MobileSubscriptionItem {
   createdAt: string;
 }
 
+export interface FollowUpChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  suggestedFollowUps?: string[];
+  createdAt?: string;
+}
+
 export const ApiService = {
   async getStatus(targetUrl?: string): Promise<{
     isAvailable: boolean;
@@ -244,6 +252,66 @@ export const ApiService = {
     }
 
     return await res.json();
+  },
+
+  async sendFollowUp(params: {
+    analysisId?: string;
+    message: string;
+    language?: string;
+    history?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  }): Promise<FollowUpChatMessage> {
+    try {
+      const res = await fetch(`${currentServerUrl}/api/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify(params),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Server returned status ${res.status}`);
+      }
+
+      const data = await res.json();
+      return {
+        id: data.messageId || `msg_${Date.now()}`,
+        role: 'assistant',
+        content: data.content,
+        suggestedFollowUps: data.suggestedFollowUps || [],
+        createdAt: data.createdAt,
+      };
+    } catch {
+      // Offline fallback reply when server is disconnected
+      return {
+        id: `offline_msg_${Date.now()}`,
+        role: 'assistant',
+        content: `FixMate Offline Guidance for: "${params.message}"\n\n• For scams: Never share OTPs, PINs, or install remote access software.\n• For bills: Verify recorded units directly on your physical meter before paying.\n• For subscriptions: Check Play Store or bank autopay mandates to cancel anytime.\n\nConnect to local PC server to unlock complete conversational reasoning.`,
+        suggestedFollowUps: ['What is the very next action I should take?'],
+        createdAt: new Date().toISOString(),
+      };
+    }
+  },
+
+  async getChatHistory(analysisId: string): Promise<FollowUpChatMessage[]> {
+    try {
+      const res = await fetch(`${currentServerUrl}/api/chat?analysisId=${encodeURIComponent(analysisId)}`, {
+        headers: { Accept: 'application/json' },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        return (data.messages || []).map((m: any) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          createdAt: m.createdAt,
+        }));
+      }
+    } catch {
+      // ignore
+    }
+    return [];
   },
 
   // History with AsyncStorage Offline Persistence

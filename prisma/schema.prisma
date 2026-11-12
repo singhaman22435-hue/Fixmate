@@ -30,6 +30,7 @@ model Analysis {
   inputs        AnalysisInput[]
   tasks         TaskItem[]
   subscriptions SubscriptionItem[]
+  messages      ChatMessage[]
 
   @@index([intent])
   @@index([createdAt])
@@ -90,5 +91,16 @@ model SystemSetting {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
+}
+
+model ChatMessage {
+  id         String   @id @default(uuid())
+  analysisId String
+  analysis   Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  role       String   // "user" or "assistant"
+  content    String
+  createdAt  DateTime @default(now())
+
+  @@index([analysisId])
 }
 

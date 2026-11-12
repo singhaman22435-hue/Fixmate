@@ -37,6 +37,7 @@ import {
 } from 'lucide-react-native';
 import { ApiService, MobileAnalysisResult, getAutoDetectedServerUrl } from '../services/api';
 import { useSettings, INDIAN_LANGUAGES } from '../context/SettingsContext';
+import { useNotification } from '../context/NotificationContext';
 import { ResultCard } from '../components/ResultCard';
 import { LanguageSelectorModal } from '../components/LanguageSelectorModal';
 
@@ -59,6 +60,7 @@ export function HomeScreen({ navigation }: any) {
     operationMode,
     selectedLanguage,
   } = useSettings();
+  const { showNotification } = useNotification();
 
   const [inputText, setInputText] = useState('');
   const [selectedIntent, setSelectedIntent] = useState<string | undefined>(undefined);
@@ -244,7 +246,18 @@ export function HomeScreen({ navigation }: any) {
       setInputText('');
       setPendingAttachment(null);
       setSelectedIntent(undefined);
+
+      showNotification({
+        type: 'success',
+        title: 'Analysis Complete',
+        message: res.title || 'Solution ready to review.',
+      });
     } catch (err: any) {
+      showNotification({
+        type: 'alert',
+        title: 'Analysis Failed',
+        message: err.message || 'Could not connect to the local FixMate server.',
+      });
       Alert.alert(
         'Processing Failed',
         err.message || 'Could not connect to the local FixMate server. Check your Settings.'
